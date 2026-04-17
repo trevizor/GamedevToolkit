@@ -321,15 +321,16 @@
     </div>
 
     <div class="toolbar-tools">
-      <button id="toolWallBtn" type="button" class="secondary tool active">Wall Tool</button>
-      <button id="toolHalfWallBtn" type="button" class="secondary tool">Half Wall Tool</button>
-      <button id="toolFakeWallBtn" type="button" class="secondary tool">Fake Wall Tool</button>
-      <button id="toolBoxBtn" type="button" class="secondary tool">Box Tool</button>
-      <button id="toolDoorBtn" type="button" class="secondary tool">Door Tool</button>
-      <button id="toolWindowBtn" type="button" class="secondary tool">Window Tool</button>
-      <button id="toolCutBtn" type="button" class="secondary tool">Cut Tool</button>
-      <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
-      <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
+      <button id="toolWallBtn" type="button" class="secondary tool active" title="Shortcut: W (cycles W group)">Wall Tool</button>
+      <button id="toolHalfWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Half Wall Tool</button>
+      <button id="toolFakeWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Fake Wall Tool</button>
+      <button id="toolBoxBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Box Tool</button>
+      <button id="toolDoorBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Door Tool</button>
+      <button id="toolWindowBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Window Tool</button>
+      <button id="toolCutBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Cut Tool</button>
+      <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
+      <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Remove Wall</button>
+      <button id="slabPreviewToggleBtn" type="button" class="secondary">Preview Slabs</button>
     </div>
 
     <div class="editor-layout">
@@ -377,6 +378,7 @@
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
 
     const exportButton = document.getElementById("exportBtn");
+    const slabPreviewToggleButton = document.getElementById("slabPreviewToggleBtn");
     const saveButton = document.getElementById("saveBtn");
     const loadButton = document.getElementById("loadBtn");
     const loadInput = document.getElementById("loadInput");
@@ -447,6 +449,7 @@
     let undoSnapshot = null;
     let redoSnapshot = null;
     let isExportPropsOpen = false;
+    let isSlabPreviewVisible = false;
 
     function getCurrentLevel() {
       return floors[currentLevelIndex];
@@ -785,6 +788,91 @@
       }
     }
 
+    function computeSlabPolygonsForLevel(levelSegments) {
+      if (!Array.isArray(levelSegments) || levelSegments.length === 0) {
+        return [];
+      }
+
+      const slabBoundaryTypes = new Set(["wall", "door", "window", "halfwall"]);
+      const worldSegments = [];
+
+      for (let i = 0; i < levelSegments.length; i += 1) {
+        const seg = levelSegments[i];
+        if (!seg || !seg.a || !seg.b || !slabBoundaryTypes.has(seg.type || "wall")) {
+          continue;
+        }
+
+        const ax = Number(seg.a.x);
+        const ay = Number(seg.a.y);
+        const bx = Number(seg.b.x);
+        const by = Number(seg.b.y);
+        if (![ax, ay, bx, by].every(Number.isFinite)) {
+          continue;
+        }
+        if (Math.hypot(bx - ax, by - ay) < 1e-8) {
+          continue;
+        }
+
+        worldSegments.push({
+          a: { x: ax, z: ay },
+          b: { x: bx, z: by },
+          type: seg.type || "wall"
+        });
+      }
+
+      if (worldSegments.length < 3) {
+        return [];
+      }
+
+      const split = splitSegmentsAtIntersections(worldSegments);
+      return extractBoundedFacesFromSegments(split);
+    }
+
+    function drawSlabPreview() {
+      if (!isSlabPreviewVisible) {
+        return;
+      }
+
+      const polygons = computeSlabPolygonsForLevel(segments);
+      if (polygons.length === 0) {
+        return;
+      }
+
+      ctx.save();
+      ctx.fillStyle = "rgba(16,185,129,0.16)";
+      ctx.strokeStyle = "rgba(16,185,129,0.62)";
+      ctx.lineWidth = 1.5;
+
+      for (let i = 0; i < polygons.length; i += 1) {
+        const poly = polygons[i];
+        if (!Array.isArray(poly) || poly.length < 3) {
+          continue;
+        }
+
+        ctx.beginPath();
+        for (let j = 0; j < poly.length; j += 1) {
+          const p = gridToCanvas({ x: poly[j].x, y: poly[j].z });
+          if (j === 0) {
+            ctx.moveTo(p.x, p.y);
+          } else {
+            ctx.lineTo(p.x, p.y);
+          }
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Dashed outline suggests the paired ceiling surface in top view.
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = "rgba(37,99,235,0.75)";
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+
     function drawPreview() {
       if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box")) {
         if (activeTool === "box") {
@@ -884,9 +972,14 @@
     function redraw() {
       drawGrid();
       drawSegments();
+      drawSlabPreview();
       drawPreview();
       updateMeta();
       updateZoomReadout();
+    }
+
+    function updateSlabPreviewToggleButton() {
+      slabPreviewToggleButton.textContent = isSlabPreviewVisible ? "Hide Slab Preview" : "Preview Slabs";
     }
 
     function updateMeta() {
@@ -2948,7 +3041,7 @@
         dragState = null;
         status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
         redraw();
-      } else if (key === "delete" || key === "backspace") {
+      } else if (key === "delete" || key === "backspace" || key === "x") {
         if (selectedSegmentIndices.size > 0) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
@@ -3089,6 +3182,22 @@
       exportWallsAsGlb();
     });
 
+    slabPreviewToggleButton.addEventListener("click", () => {
+      isSlabPreviewVisible = !isSlabPreviewVisible;
+      updateSlabPreviewToggleButton();
+
+      if (isSlabPreviewVisible) {
+        const polygons = computeSlabPolygonsForLevel(segments);
+        status.textContent = polygons.length > 0
+          ? `Slab preview enabled. Closed regions detected: ${polygons.length}.`
+          : "Slab preview enabled. No closed regions detected on this level.";
+      } else {
+        status.textContent = "Slab preview hidden.";
+      }
+
+      redraw();
+    });
+
     exportPropsToggleButton.addEventListener("click", () => {
       isExportPropsOpen = !isExportPropsOpen;
       applyExportPropsVisibility();
@@ -3097,6 +3206,7 @@
 
     loadUiState();
     setPlanTitle(planTitle);
+    updateSlabPreviewToggleButton();
     applyExportPropsVisibility();
     renderLevelList();
 
