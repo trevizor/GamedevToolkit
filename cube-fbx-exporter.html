@@ -185,6 +185,7 @@
       <button id="undoBtn" type="button" class="secondary">Undo Last Line</button>
       <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
       <button id="toolWallBtn" type="button" class="secondary tool active">Wall Tool</button>
+      <button id="toolHalfWallBtn" type="button" class="secondary tool">Half Wall Tool</button>
       <button id="toolDoorBtn" type="button" class="secondary tool">Door Tool</button>
       <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
       <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
@@ -226,11 +227,13 @@
     let gridPx = DEFAULT_GRID_PX;
     const DOOR_WIDTH_UNITS = 1;
     const DOOR_HEAD_HEIGHT_UNITS = 2;
+    const HALF_WALL_HEIGHT_FACTOR = 0.5;
 
     const exportButton = document.getElementById("exportBtn");
     const undoButton = document.getElementById("undoBtn");
     const clearButton = document.getElementById("clearBtn");
     const toolWallButton = document.getElementById("toolWallBtn");
+    const toolHalfWallButton = document.getElementById("toolHalfWallBtn");
     const toolDoorButton = document.getElementById("toolDoorBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
@@ -250,12 +253,17 @@
     let pointerGrid = null;
     let startGrid = null;
     let drawing = false;
+    let isPanning = false;
+    let panLastPointer = null;
+    let viewOffsetX = 0;
+    let viewOffsetY = 0;
     let activeTool = "wall";
     let selectedSegmentIndex = -1;
     let dragState = null;
 
     const toolButtons = {
       wall: toolWallButton,
+      halfwall: toolHalfWallButton,
       door: toolDoorButton,
       select: toolSelectButton,
       erase: toolEraseButton
@@ -278,13 +286,13 @@
     }
 
     function gridToCanvas(point) {
-      return { x: point.x * gridPx, y: point.y * gridPx };
+      return { x: point.x * gridPx + viewOffsetX, y: point.y * gridPx + viewOffsetY };
     }
 
     function canvasToGrid(x, y) {
       return {
-        x: Math.round(x / gridPx),
-        y: Math.round(y / gridPx)
+        x: Math.round((x - viewOffsetX) / gridPx),
+        y: Math.round((y - viewOffsetY) / gridPx)
       };
     }
 
@@ -302,16 +310,22 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 1;
 
-      for (let x = 0; x <= canvas.width; x += gridPx) {
-        ctx.strokeStyle = x % (gridPx * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
+      const startX = Math.floor((0 - viewOffsetX) / gridPx);
+      const endX = Math.ceil((canvas.width - viewOffsetX) / gridPx);
+      for (let gx = startX; gx <= endX; gx += 1) {
+        const x = gx * gridPx + viewOffsetX;
+        ctx.strokeStyle = gx % 4 === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
         ctx.moveTo(x + 0.5, 0);
         ctx.lineTo(x + 0.5, canvas.height);
         ctx.stroke();
       }
 
-      for (let y = 0; y <= canvas.height; y += gridPx) {
-        ctx.strokeStyle = y % (gridPx * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
+      const startY = Math.floor((0 - viewOffsetY) / gridPx);
+      const endY = Math.ceil((canvas.height - viewOffsetY) / gridPx);
+      for (let gy = startY; gy <= endY; gy += 1) {
+        const y = gy * gridPx + viewOffsetY;
+        ctx.strokeStyle = gy % 4 === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
         ctx.moveTo(0, y + 0.5);
         ctx.lineTo(canvas.width, y + 0.5);
@@ -322,7 +336,13 @@
     function drawSegments() {
       segments.forEach((seg, i) => {
         ctx.lineWidth = i === selectedSegmentIndex ? 4 : 3;
-        ctx.strokeStyle = seg.type === "door" ? "#d97706" : "#0f1722";
+        if (seg.type === "door") {
+          ctx.strokeStyle = "#d97706";
+        } else if (seg.type === "halfwall") {
+          ctx.strokeStyle = "#0e7490";
+        } else {
+          ctx.strokeStyle = "#0f1722";
+        }
         const a = gridToCanvas(seg.a);
         const b = gridToCanvas(seg.b);
         ctx.beginPath();
@@ -333,12 +353,18 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "halfwall")) {
         const a = gridToCanvas(startGrid);
         const target = activeTool === "door" ? projectDoorEndpoint(startGrid, pointerGrid) : pointerGrid;
         const b = gridToCanvas(target);
         ctx.lineWidth = 3;
-        ctx.strokeStyle = activeTool === "door" ? "#d97706" : "#1479ff";
+        if (activeTool === "door") {
+          ctx.strokeStyle = "#d97706";
+        } else if (activeTool === "halfwall") {
+          ctx.strokeStyle = "#0e7490";
+        } else {
+          ctx.strokeStyle = "#1479ff";
+        }
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -365,9 +391,10 @@
     function updateMeta() {
       const wallHeight = getWallHeight().toFixed(2);
       const wallThickness = getWallThickness().toFixed(2);
-      const wallCount = segments.filter(seg => seg.type !== "door").length;
+      const wallCount = segments.filter(seg => seg.type === "wall").length;
+      const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Doors: ${doorCount}`;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -381,6 +408,22 @@
 
     function setCanvasZoom(nextGridPx) {
       gridPx = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, nextGridPx));
+      redraw();
+    }
+
+    function setCanvasZoomAtPoint(nextGridPx, anchorCanvasX, anchorCanvasY) {
+      const oldGridPx = gridPx;
+      const clamped = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, nextGridPx));
+      if (Math.abs(clamped - oldGridPx) < 1e-9) {
+        return;
+      }
+
+      const worldX = (anchorCanvasX - viewOffsetX) / oldGridPx;
+      const worldY = (anchorCanvasY - viewOffsetY) / oldGridPx;
+
+      gridPx = clamped;
+      viewOffsetX = anchorCanvasX - worldX * gridPx;
+      viewOffsetY = anchorCanvasY - worldY * gridPx;
       redraw();
     }
 
@@ -971,17 +1014,29 @@
           other = node.dirs[1];
         }
 
+        // Keep orthogonal corners square: avoid diagonal miter merge near 90 degrees.
+        const cornerDot = vec2Dot(outDir, other);
+        if (Math.abs(cornerDot) < 0.12) {
+          return vec2Scale(normal, half);
+        }
+
         const otherBase = vec2PerpLeft(other);
         const otherNormal = sideSign > 0 ? otherBase : vec2Scale(otherBase, -1);
         const miter = vec2Normalize(vec2Add(normal, otherNormal));
         const denom = vec2Dot(miter, normal);
 
-        if (Math.abs(denom) < 0.2) {
+        // Reject joins that would send the offset behind the expected side.
+        if (denom <= 0.2) {
           return vec2Scale(normal, half);
         }
 
         const length = Math.min((half / denom), half * 4);
-        return vec2Scale(miter, length);
+        const offset = vec2Scale(miter, length);
+        if (vec2Dot(offset, normal) <= 0) {
+          return vec2Scale(normal, half);
+        }
+
+        return offset;
       }
 
       function sanitizePolygonXZ(points) {
@@ -1095,8 +1150,16 @@
         const startNode = nodes.get(nodeKey(seg.a));
         const endNode = nodes.get(nodeKey(seg.b));
         const segType = seg.type || "wall";
-        const baseY = segType === "door" ? Math.min(DOOR_HEAD_HEIGHT_UNITS, height) : 0;
-        if (baseY >= height - 1e-6) {
+        let baseY = 0;
+        let topY = height;
+
+        if (segType === "door") {
+          baseY = Math.min(DOOR_HEAD_HEIGHT_UNITS, height);
+        } else if (segType === "halfwall") {
+          topY = height * HALF_WALL_HEIGHT_FACTOR;
+        }
+
+        if (topY - baseY <= 1e-6) {
           continue;
         }
 
@@ -1110,10 +1173,10 @@
         const v1 = [sRight.x, baseY, sRight.z];
         const v2 = [eRight.x, baseY, eRight.z];
         const v3 = [eLeft.x, baseY, eLeft.z];
-        const v4 = [sLeft.x, height, sLeft.z];
-        const v5 = [sRight.x, height, sRight.z];
-        const v6 = [eRight.x, height, eRight.z];
-        const v7 = [eLeft.x, height, eLeft.z];
+        const v4 = [sLeft.x, topY, sLeft.z];
+        const v5 = [sRight.x, topY, sRight.z];
+        const v6 = [eRight.x, topY, eRight.z];
+        const v7 = [eLeft.x, topY, eLeft.z];
 
         const leftN = vec2PerpLeft(seg.dir);
         const rightN = vec2Scale(leftN, -1);
@@ -1124,11 +1187,18 @@
         addOrientedQuad(v0, v1, v2, v3, [0, -1, 0]);
         addOrientedQuad(v0, v3, v7, v4, [leftN.x, 0, leftN.z]);
         addOrientedQuad(v1, v5, v6, v2, [rightN.x, 0, rightN.z]);
-        addOrientedQuad(v0, v4, v5, v1, [startN.x, 0, startN.z]);
-        addOrientedQuad(v3, v2, v6, v7, [endN.x, 0, endN.z]);
+
+        // Only cap true open ends; intersection/join nodes should not create end caps.
+        if (startNode && startNode.dirs.length <= 1) {
+          addOrientedQuad(v0, v4, v5, v1, [startN.x, 0, startN.z]);
+        }
+        if (endNode && endNode.dirs.length <= 1) {
+          addOrientedQuad(v3, v2, v6, v7, [endN.x, 0, endN.z]);
+        }
       }
 
-      const sealedFaces = extractBoundedFacesFromSegments(worldSegments);
+      const closureSegments = worldSegments.filter(seg => (seg.type || "wall") !== "halfwall");
+      const sealedFaces = extractBoundedFacesFromSegments(closureSegments);
       for (let i = 0; i < sealedFaces.length; i += 1) {
         const poly = sealedFaces[i];
         addExtrudedPolygonUp(poly, 0, slabThickness, "floor");
@@ -1320,6 +1390,18 @@
     }
 
     canvas.addEventListener("mousedown", event => {
+      if (event.button === 1) {
+        event.preventDefault();
+        const p = getPointerPosition(event);
+        isPanning = true;
+        panLastPointer = p;
+        return;
+      }
+
+      if (event.button !== 0) {
+        return;
+      }
+
       const p = getPointerPosition(event);
       pointerGrid = canvasToGrid(p.x, p.y);
 
@@ -1362,6 +1444,18 @@
 
     canvas.addEventListener("mousemove", event => {
       const p = getPointerPosition(event);
+
+      if (isPanning && panLastPointer) {
+        const dx = p.x - panLastPointer.x;
+        const dy = p.y - panLastPointer.y;
+        viewOffsetX += dx;
+        viewOffsetY += dy;
+        panLastPointer = p;
+        pointerGrid = canvasToGrid(p.x, p.y);
+        redraw();
+        return;
+      }
+
       pointerGrid = canvasToGrid(p.x, p.y);
 
       if (activeTool === "select" && dragState) {
@@ -1378,6 +1472,16 @@
     });
 
     canvas.addEventListener("mouseup", event => {
+      if (event.button === 1) {
+        isPanning = false;
+        panLastPointer = null;
+        return;
+      }
+
+      if (event.button !== 0) {
+        return;
+      }
+
       if (activeTool === "select") {
         if (dragState) {
           status.textContent = "Segment moved.";
@@ -1406,6 +1510,13 @@
           type: "door"
         });
         status.textContent = `Door added (width ${DOOR_WIDTH_UNITS}). Total segments: ${segments.length}`;
+      } else if (activeTool === "halfwall" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
+        segments.push({
+          a: { x: startGrid.x, y: startGrid.y },
+          b: { x: endGrid.x, y: endGrid.y },
+          type: "halfwall"
+        });
+        status.textContent = `Half wall added. Total segments: ${segments.length}`;
       } else if (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y) {
         segments.push({
           a: { x: startGrid.x, y: startGrid.y },
@@ -1421,12 +1532,27 @@
     });
 
     canvas.addEventListener("mouseleave", () => {
+      isPanning = false;
+      panLastPointer = null;
       if (activeTool === "select") {
         dragState = null;
       }
       pointerGrid = null;
       redraw();
     });
+
+    canvas.addEventListener("auxclick", event => {
+      if (event.button === 1) {
+        event.preventDefault();
+      }
+    });
+
+    canvas.addEventListener("wheel", event => {
+      event.preventDefault();
+      const p = getPointerPosition(event);
+      const zoomFactor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setCanvasZoomAtPoint(gridPx * zoomFactor, p.x, p.y);
+    }, { passive: false });
 
     undoButton.addEventListener("click", () => {
       if (segments.length > 0) {
@@ -1445,6 +1571,7 @@
     });
 
     toolWallButton.addEventListener("click", () => setTool("wall"));
+    toolHalfWallButton.addEventListener("click", () => setTool("halfwall"));
     toolDoorButton.addEventListener("click", () => setTool("door"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
