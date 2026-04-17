@@ -273,6 +273,8 @@
     const ctx = canvas.getContext("2d");
 
     const segments = [];
+    const LOCAL_PLAN_STORAGE_KEY = "floor-plan-editor.autosave.v1";
+    const LOCAL_PLAN_SAVE_DELAY_MS = 250;
     let pointerGrid = null;
     let startGrid = null;
     let drawing = false;
@@ -288,6 +290,7 @@
     let marqueeEndWorld = null;
     let marqueeMode = "replace";
     let dragState = null;
+    let localSaveTimer = null;
 
     const toolButtons = {
       wall: toolWallButton,
@@ -369,6 +372,22 @@
         ctx.lineTo(canvas.width, y + 0.5);
         ctx.stroke();
       }
+
+      const originCanvas = gridToCanvas({ x: 0, y: 0 });
+      const cx = originCanvas.x;
+      const cy = originCanvas.y;
+      const markerHalf = 10;
+
+      ctx.save();
+      ctx.strokeStyle = "#93c5fd";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - markerHalf, cy + 0.5);
+      ctx.lineTo(cx + markerHalf, cy + 0.5);
+      ctx.moveTo(cx + 0.5, cy - markerHalf);
+      ctx.lineTo(cx + 0.5, cy + markerHalf);
+      ctx.stroke();
+      ctx.restore();
     }
 
     function drawSegments() {
@@ -515,6 +534,7 @@
 
     function setCanvasZoom(nextGridPx) {
       gridPx = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, nextGridPx));
+      queueLocalAutosave();
       redraw();
     }
 
@@ -531,6 +551,7 @@
       gridPx = clamped;
       viewOffsetX = anchorCanvasX - worldX * gridPx;
       viewOffsetY = anchorCanvasY - worldY * gridPx;
+      queueLocalAutosave();
       redraw();
     }
 
@@ -571,6 +592,7 @@
       if (index >= 0) {
         segments.splice(index, 1);
         selectedSegmentIndices.clear();
+        queueLocalAutosave();
         return true;
       }
       return false;
@@ -595,6 +617,7 @@
       marqueeEndWorld = null;
       marqueeMode = "replace";
       dragState = null;
+      queueLocalAutosave();
       return removedCount;
     }
 
@@ -671,6 +694,107 @@
         endpoint: dA <= dB ? "a" : "b",
         startPoint: clonePoint(dA <= dB ? seg.a : seg.b)
       };
+    }
+
+    function tryMergeMovedEndpoint(drag) {
+      if (!drag || drag.mode !== "move-endpoint") {
+        return false;
+      }
+
+      const seg = segments[drag.index];
+      if (!seg) {
+        return false;
+      }
+
+      const movedPoint = drag.endpoint === "a" ? seg.a : seg.b;
+      const endpointSnapTolerance = Math.max(1e-6, 4 / Math.max(gridPx, 1));
+      let otherIndex = -1;
+
+      function isSamePoint(p, q) {
+        return Math.hypot(p.x - q.x, p.y - q.y) <= endpointSnapTolerance;
+      }
+
+      function normalizedDirection(s) {
+        const dx = s.b.x - s.a.x;
+        const dy = s.b.y - s.a.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-8) {
+          return null;
+        }
+        return { x: dx / len, y: dy / len };
+      }
+
+      for (let i = 0; i < segments.length; i += 1) {
+        if (i === drag.index) {
+          continue;
+        }
+        const candidate = segments[i];
+        if (!candidate || candidate.type !== seg.type) {
+          continue;
+        }
+        if (isSamePoint(candidate.a, movedPoint) || isSamePoint(candidate.b, movedPoint)) {
+          otherIndex = i;
+          break;
+        }
+      }
+
+      if (otherIndex < 0) {
+        return false;
+      }
+
+      const other = segments[otherIndex];
+      const dirA = normalizedDirection(seg);
+      const dirB = normalizedDirection(other);
+      if (!dirA || !dirB) {
+        return false;
+      }
+
+      const cross = dirA.x * dirB.y - dirA.y * dirB.x;
+      const dot = dirA.x * dirB.x + dirA.y * dirB.y;
+      if (Math.abs(cross) > 1e-4 || Math.abs(dot) < 0.999) {
+        return false;
+      }
+
+      const allPoints = [seg.a, seg.b, other.a, other.b];
+      let minT = Infinity;
+      let maxT = -Infinity;
+      let minPoint = null;
+      let maxPoint = null;
+
+      for (let i = 0; i < allPoints.length; i += 1) {
+        const p = allPoints[i];
+        const t = p.x * dirA.x + p.y * dirA.y;
+        if (t < minT) {
+          minT = t;
+          minPoint = p;
+        }
+        if (t > maxT) {
+          maxT = t;
+          maxPoint = p;
+        }
+      }
+
+      if (!minPoint || !maxPoint || Math.hypot(maxPoint.x - minPoint.x, maxPoint.y - minPoint.y) < 1e-6) {
+        return false;
+      }
+
+      const keepIndex = drag.index;
+      const removeIndex = otherIndex;
+      seg.a = { x: minPoint.x, y: minPoint.y };
+      seg.b = { x: maxPoint.x, y: maxPoint.y };
+      segments.splice(removeIndex, 1);
+
+      let finalIndex = keepIndex;
+      if (removeIndex < keepIndex) {
+        finalIndex = keepIndex - 1;
+      }
+
+      selectedSegmentIndices.clear();
+      if (finalIndex >= 0 && finalIndex < segments.length) {
+        selectedSegmentIndices.add(finalIndex);
+      }
+      queueLocalAutosave();
+      return true;
     }
 
     function projectDoorEndpoint(start, pointer) {
@@ -870,6 +994,7 @@
     function addSegmentWithCuts(type, a, b) {
       splitExistingSegmentsAtIntersections(a, b);
       pushSegment(type, a, b);
+      queueLocalAutosave();
     }
 
     function projectPointToSegment2D(point, a, b) {
@@ -960,6 +1085,7 @@
       segments.splice(best.index, 1);
       pushSegment("wall", seg.a, cutA);
       pushSegment("wall", cutB, seg.b);
+      queueLocalAutosave();
 
       return { a: cutA, b: cutB };
     }
@@ -985,6 +1111,7 @@
       segments.splice(segmentIndex, 1);
       pushSegment(seg.type, seg.a, splitPoint);
       pushSegment(seg.type, splitPoint, seg.b);
+      queueLocalAutosave();
       return true;
     }
 
@@ -1019,6 +1146,41 @@
           type: seg.type || "wall"
         }))
       };
+    }
+
+    function saveProjectToLocalStorage() {
+      try {
+        const text = JSON.stringify(serializeProject());
+        localStorage.setItem(LOCAL_PLAN_STORAGE_KEY, text);
+      } catch (error) {
+        console.warn("Failed to autosave project to local storage.", error);
+      }
+    }
+
+    function queueLocalAutosave() {
+      if (localSaveTimer) {
+        clearTimeout(localSaveTimer);
+      }
+      localSaveTimer = setTimeout(() => {
+        localSaveTimer = null;
+        saveProjectToLocalStorage();
+      }, LOCAL_PLAN_SAVE_DELAY_MS);
+    }
+
+    function loadProjectFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(LOCAL_PLAN_STORAGE_KEY);
+        if (!raw) {
+          return false;
+        }
+        const data = JSON.parse(raw);
+        applyProjectData(data);
+        setTool("select");
+        return true;
+      } catch (error) {
+        console.warn("Failed to load autosaved project from local storage.", error);
+        return false;
+      }
     }
 
     function applyProjectData(data) {
@@ -1106,6 +1268,8 @@
           const raw = String(reader.result || "");
           const data = JSON.parse(raw);
           applyProjectData(data);
+          setTool("select");
+          queueLocalAutosave();
           status.textContent = `Plan loaded. Segments: ${segments.length}`;
           redraw();
         } catch (error) {
@@ -2140,6 +2304,7 @@
         viewOffsetY += dy;
         panLastPointer = p;
         pointerGrid = canvasToGrid(p.x, p.y);
+        queueLocalAutosave();
         redraw();
         return;
       }
@@ -2194,6 +2359,8 @@
             seg.b.y = original.b.y + dy;
           }
         }
+
+        queueLocalAutosave();
       }
 
       redraw();
@@ -2235,7 +2402,8 @@
           status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
         } else if (dragState) {
           if (dragState.mode === "move-endpoint") {
-            status.textContent = "Line endpoint moved.";
+            const merged = tryMergeMovedEndpoint(dragState);
+            status.textContent = merged ? "Lines merged." : "Line endpoint moved.";
           } else {
             status.textContent = `Moved ${selectedSegmentIndices.size} line(s).`;
           }
@@ -2362,6 +2530,7 @@
     undoButton.addEventListener("click", () => {
       if (segments.length > 0) {
         segments.pop();
+        queueLocalAutosave();
         status.textContent = "Last line removed.";
         redraw();
       }
@@ -2375,6 +2544,7 @@
       marqueeEndWorld = null;
       marqueeMode = "replace";
       dragState = null;
+      queueLocalAutosave();
       status.textContent = "Plan cleared.";
       redraw();
     });
@@ -2408,15 +2578,32 @@
     zoomInButton.addEventListener("click", () => setCanvasZoom(gridPx + 2));
     zoomResetButton.addEventListener("click", () => setCanvasZoom(DEFAULT_GRID_PX));
 
-    thicknessInput.addEventListener("change", redraw);
-    heightInput.addEventListener("change", redraw);
-    joinModeSelect.addEventListener("change", redraw);
+    thicknessInput.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
+    heightInput.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
+    joinModeSelect.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
 
     exportButton.addEventListener("click", () => {
       exportWallsAsGlb();
     });
 
+    const hasAutosavedPlan = loadProjectFromLocalStorage();
+    if (hasAutosavedPlan) {
+      status.textContent = `Autosaved plan loaded. Segments: ${segments.length}`;
+    }
     redraw();
+
+    window.addEventListener("beforeunload", () => {
+      saveProjectToLocalStorage();
+    });
   </script>
 </body>
 </html>
