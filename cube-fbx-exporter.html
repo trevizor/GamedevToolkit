@@ -78,6 +78,19 @@
       margin-bottom: 14px;
     }
 
+    .tool-group {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .tool-group + .tool-group {
+      border-left: 1px solid var(--border);
+      padding-left: 10px;
+      margin-left: 2px;
+    }
+
     .meta {
       color: var(--muted);
       font-size: 0.9rem;
@@ -321,17 +334,25 @@
     </div>
 
     <div class="toolbar-tools">
-      <button id="toolWallBtn" type="button" class="secondary tool active" title="Shortcut: W (cycles W group)">Wall Tool</button>
-      <button id="toolHalfWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Half Wall Tool</button>
-      <button id="toolFakeWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Fake Wall Tool</button>
-      <button id="toolBoxBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Box Tool</button>
-      <button id="toolEllipseBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)" hidden>Ellipse Tool</button>
-      <button id="toolDoorBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Door Tool</button>
-      <button id="toolWindowBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Window Tool</button>
-      <button id="toolCutBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Cut Tool</button>
-      <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
-      <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Remove Wall</button>
-      <button id="slabPreviewToggleBtn" type="button" class="secondary">Preview Slabs</button>
+      <div class="tool-group" aria-label="W group tools">
+        <button id="toolWallBtn" type="button" class="secondary tool active" title="Shortcut: W (cycles W group)">Wall Tool</button>
+        <button id="toolHalfWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Half Wall Tool</button>
+        <button id="toolFakeWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Fake Wall Tool</button>
+        <button id="toolBoxBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Box Tool</button>
+        <button id="toolEllipseBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)" hidden>Ellipse Tool</button>
+      </div>
+      <div class="tool-group" aria-label="D group tools">
+        <button id="toolDoorBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Door Tool</button>
+        <button id="toolWindowBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Window Tool</button>
+        <button id="toolCutBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Cut Tool</button>
+      </div>
+      <div class="tool-group" aria-label="S group tools">
+        <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
+        <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Remove Wall</button>
+      </div>
+      <div class="tool-group" aria-label="View tools">
+        <button id="slabPreviewToggleBtn" type="button" class="secondary">Preview Slabs</button>
+      </div>
     </div>
 
     <div class="editor-layout">
