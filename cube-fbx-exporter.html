@@ -56,6 +56,29 @@
       margin-left: auto;
     }
 
+    .field {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #32455f;
+      font-size: 0.9rem;
+      background: #f2f6fd;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+
+    .field input,
+    .field select {
+      border: 1px solid #c7d5ea;
+      border-radius: 6px;
+      padding: 4px 6px;
+      background: #fff;
+      color: #1f2d3d;
+      font-size: 0.9rem;
+      width: 86px;
+    }
+
     h1 {
       margin: 0 0 10px;
       font-size: 1.5rem;
@@ -82,6 +105,11 @@
     button.secondary {
       background: #edf3fd;
       color: #22406d;
+    }
+
+    button.tool.active {
+      background: #0f1722;
+      color: #ffffff;
     }
 
     button:hover {
@@ -119,13 +147,29 @@
 <body>
   <main class="card">
     <h1>Floor Plan to Walls GLB</h1>
-    <p>Draw line segments snapped to a 0.25 grid. Export creates wall cubes along those lines.</p>
+    <p>Draw line segments snapped to a 0.25 grid. Export creates clean wall geometry from those segments.</p>
 
     <div class="toolbar">
       <button id="exportBtn" type="button">Export Walls GLB</button>
       <button id="undoBtn" type="button" class="secondary">Undo Last Line</button>
       <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
-      <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5</span>
+      <button id="toolWallBtn" type="button" class="secondary tool active">Wall Tool</button>
+      <button id="toolDoorBtn" type="button" class="secondary tool">Door Tool</button>
+      <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
+      <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
+      <label class="field">Thickness
+        <input id="thicknessInput" type="number" min="0.01" step="0.125" value="0.125" />
+      </label>
+      <label class="field">Height
+        <input id="heightInput" type="number" min="0.25" step="0.25" value="2.5" />
+      </label>
+      <label class="field">Join
+        <select id="joinModeSelect">
+          <option value="miter">Miter</option>
+          <option value="bevel">Bevel</option>
+        </select>
+      </label>
+      <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
     </div>
 
     <div class="canvas-wrap">
@@ -138,12 +182,19 @@
   <script>
     const GRID_SIZE_UNITS = 0.25;
     const GRID_PX = 24;
-    const CUBE_SIZE = 0.25;
-    const WALL_HEIGHT_CUBES = 10;
+    const DOOR_WIDTH_UNITS = 1;
+    const DOOR_HEAD_HEIGHT_UNITS = 2;
 
     const exportButton = document.getElementById("exportBtn");
     const undoButton = document.getElementById("undoBtn");
     const clearButton = document.getElementById("clearBtn");
+    const toolWallButton = document.getElementById("toolWallBtn");
+    const toolDoorButton = document.getElementById("toolDoorBtn");
+    const toolSelectButton = document.getElementById("toolSelectBtn");
+    const toolEraseButton = document.getElementById("toolEraseBtn");
+    const thicknessInput = document.getElementById("thicknessInput");
+    const heightInput = document.getElementById("heightInput");
+    const joinModeSelect = document.getElementById("joinModeSelect");
     const status = document.getElementById("status");
     const meta = document.getElementById("meta");
     const canvas = document.getElementById("planCanvas");
@@ -153,6 +204,32 @@
     let pointerGrid = null;
     let startGrid = null;
     let drawing = false;
+    let activeTool = "wall";
+    let selectedSegmentIndex = -1;
+    let dragState = null;
+
+    const toolButtons = {
+      wall: toolWallButton,
+      door: toolDoorButton,
+      select: toolSelectButton,
+      erase: toolEraseButton
+    };
+
+    function clampNumber(value, fallback, min) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) {
+        return fallback;
+      }
+      return Math.max(min, parsed);
+    }
+
+    function getWallThickness() {
+      return clampNumber(thicknessInput.value, 0.125, 0.01);
+    }
+
+    function getWallHeight() {
+      return clampNumber(heightInput.value, 2.5, 0.25);
+    }
 
     function gridToCanvas(point) {
       return { x: point.x * GRID_PX, y: point.y * GRID_PX };
@@ -197,9 +274,9 @@
     }
 
     function drawSegments() {
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#0f1722";
-      segments.forEach(seg => {
+      segments.forEach((seg, i) => {
+        ctx.lineWidth = i === selectedSegmentIndex ? 4 : 3;
+        ctx.strokeStyle = seg.type === "door" ? "#d97706" : "#0f1722";
         const a = gridToCanvas(seg.a);
         const b = gridToCanvas(seg.b);
         ctx.beginPath();
@@ -210,11 +287,12 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door")) {
         const a = gridToCanvas(startGrid);
-        const b = gridToCanvas(pointerGrid);
+        const target = activeTool === "door" ? projectDoorEndpoint(startGrid, pointerGrid) : pointerGrid;
+        const b = gridToCanvas(target);
         ctx.lineWidth = 3;
-        ctx.strokeStyle = "#1479ff";
+        ctx.strokeStyle = activeTool === "door" ? "#d97706" : "#1479ff";
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -238,8 +316,89 @@
     }
 
     function updateMeta() {
-      const wallHeight = (WALL_HEIGHT_CUBES * CUBE_SIZE).toFixed(2);
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Wall Height: ${wallHeight} | Segments: ${segments.length}`;
+      const wallHeight = getWallHeight().toFixed(2);
+      const wallThickness = getWallThickness().toFixed(2);
+      const wallCount = segments.filter(seg => seg.type !== "door").length;
+      const doorCount = segments.filter(seg => seg.type === "door").length;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Doors: ${doorCount}`;
+    }
+
+    function getDoorWidthGrid() {
+      return DOOR_WIDTH_UNITS / GRID_SIZE_UNITS;
+    }
+
+    function clonePoint(point) {
+      return { x: point.x, y: point.y };
+    }
+
+    function setTool(nextTool) {
+      activeTool = nextTool;
+      drawing = false;
+      startGrid = null;
+      selectedSegmentIndex = -1;
+      dragState = null;
+
+      Object.keys(toolButtons).forEach(key => {
+        toolButtons[key].classList.toggle("active", key === activeTool);
+      });
+
+      status.textContent = `Tool changed to ${activeTool}.`;
+      redraw();
+    }
+
+    function projectDoorEndpoint(start, pointer) {
+      const dx = pointer.x - start.x;
+      const dy = pointer.y - start.y;
+      const len = Math.hypot(dx, dy);
+      const doorWidthGrid = getDoorWidthGrid();
+
+      if (len < 1e-6) {
+        return { x: start.x + doorWidthGrid, y: start.y };
+      }
+
+      const scale = doorWidthGrid / len;
+      return {
+        x: start.x + dx * scale,
+        y: start.y + dy * scale
+      };
+    }
+
+    function pointToSegmentDistance(point, a, b) {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const apx = point.x - a.x;
+      const apy = point.y - a.y;
+      const lenSq = abx * abx + aby * aby;
+
+      if (lenSq < 1e-8) {
+        return Math.hypot(apx, apy);
+      }
+
+      const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / lenSq));
+      const cx = a.x + abx * t;
+      const cy = a.y + aby * t;
+      return Math.hypot(point.x - cx, point.y - cy);
+    }
+
+    function findNearestSegmentIndex(point, filterFn) {
+      const maxDist = 0.4;
+      let bestIndex = -1;
+      let bestDistance = Infinity;
+
+      for (let i = 0; i < segments.length; i += 1) {
+        const seg = segments[i];
+        if (filterFn && !filterFn(seg)) {
+          continue;
+        }
+
+        const d = pointToSegmentDistance(point, seg.a, seg.b);
+        if (d <= maxDist && d < bestDistance) {
+          bestDistance = d;
+          bestIndex = i;
+        }
+      }
+
+      return bestIndex;
     }
 
     function downloadBlob(blob, filename) {
@@ -253,72 +412,673 @@
       URL.revokeObjectURL(url);
     }
 
-    function addCube(mesh, centerX, centerY, centerZ, size) {
-      const half = size / 2;
-      const base = mesh.vertices.length;
-
-      mesh.vertices.push(
-        [centerX - half, centerY - half, centerZ - half],
-        [centerX + half, centerY - half, centerZ - half],
-        [centerX + half, centerY + half, centerZ - half],
-        [centerX - half, centerY + half, centerZ - half],
-        [centerX - half, centerY - half, centerZ + half],
-        [centerX + half, centerY - half, centerZ + half],
-        [centerX + half, centerY + half, centerZ + half],
-        [centerX - half, centerY + half, centerZ + half]
-      );
-
-      mesh.faces.push(
-        [base + 0, base + 1, base + 2], [base + 0, base + 2, base + 3],
-        [base + 4, base + 6, base + 5], [base + 4, base + 7, base + 6],
-        [base + 0, base + 4, base + 5], [base + 0, base + 5, base + 1],
-        [base + 1, base + 5, base + 6], [base + 1, base + 6, base + 2],
-        [base + 2, base + 6, base + 7], [base + 2, base + 7, base + 3],
-        [base + 3, base + 7, base + 4], [base + 3, base + 4, base + 0]
-      );
+    function vec2(x, z) {
+      return { x, z };
     }
 
-    function collectWallFootprint() {
-      const points = new Set();
+    function vec2Add(a, b) {
+      return { x: a.x + b.x, z: a.z + b.z };
+    }
 
-      segments.forEach(seg => {
-        const dx = seg.b.x - seg.a.x;
-        const dy = seg.b.y - seg.a.y;
-        const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    function vec2Sub(a, b) {
+      return { x: a.x - b.x, z: a.z - b.z };
+    }
 
-        if (steps === 0) {
-          points.add(`${seg.a.x},${seg.a.y}`);
-          return;
+    function vec2Scale(v, s) {
+      return { x: v.x * s, z: v.z * s };
+    }
+
+    function vec2Dot(a, b) {
+      return a.x * b.x + a.z * b.z;
+    }
+
+    function vec2Length(v) {
+      return Math.hypot(v.x, v.z);
+    }
+
+    function vec2Normalize(v) {
+      const len = vec2Length(v);
+      if (len < 1e-8) {
+        return { x: 0, z: 0 };
+      }
+      return { x: v.x / len, z: v.z / len };
+    }
+
+    function vec2PerpLeft(v) {
+      return { x: -v.z, z: v.x };
+    }
+
+    function add3(a, b) {
+      return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    }
+
+    function sub3(a, b) {
+      return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    }
+
+    function dot3(a, b) {
+      return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+
+    function cross3(a, b) {
+      return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+      ];
+    }
+
+    function vertexKey(v) {
+      return `${v[0].toFixed(6)},${v[1].toFixed(6)},${v[2].toFixed(6)}`;
+    }
+
+    function lineCross2(a, b) {
+      return a.x * b.z - a.z * b.x;
+    }
+
+    function subtract2(a, b) {
+      return { x: a.x - b.x, z: a.z - b.z };
+    }
+
+    function segmentIntersectionParams(segA, segB) {
+      const eps = 1e-7;
+      const p = segA.a;
+      const q = segB.a;
+      const r = subtract2(segA.b, segA.a);
+      const s = subtract2(segB.b, segB.a);
+      const rxs = lineCross2(r, s);
+      if (Math.abs(rxs) < eps) {
+        return null;
+      }
+
+      const qp = subtract2(q, p);
+      const t = lineCross2(qp, s) / rxs;
+      const u = lineCross2(qp, r) / rxs;
+
+      if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) {
+        return null;
+      }
+
+      return {
+        t: Math.max(0, Math.min(1, t)),
+        u: Math.max(0, Math.min(1, u))
+      };
+    }
+
+    function splitSegmentsAtIntersections(rawSegments) {
+      const splitT = rawSegments.map(() => [0, 1]);
+
+      for (let i = 0; i < rawSegments.length; i += 1) {
+        for (let j = i + 1; j < rawSegments.length; j += 1) {
+          const hit = segmentIntersectionParams(rawSegments[i], rawSegments[j]);
+          if (!hit) {
+            continue;
+          }
+          splitT[i].push(hit.t);
+          splitT[j].push(hit.u);
+        }
+      }
+
+      const result = [];
+      const minLen = 1e-5;
+
+      for (let i = 0; i < rawSegments.length; i += 1) {
+        const seg = rawSegments[i];
+        const r = subtract2(seg.b, seg.a);
+        const ts = Array.from(new Set(splitT[i].map(t => t.toFixed(6)))).map(Number).sort((a, b) => a - b);
+
+        for (let k = 0; k < ts.length - 1; k += 1) {
+          const t0 = ts[k];
+          const t1 = ts[k + 1];
+          if (t1 - t0 <= 1e-6) {
+            continue;
+          }
+
+          const a = { x: seg.a.x + r.x * t0, z: seg.a.z + r.z * t0 };
+          const b = { x: seg.a.x + r.x * t1, z: seg.a.z + r.z * t1 };
+          const d = subtract2(b, a);
+          const len = Math.hypot(d.x, d.z);
+          if (len <= minLen) {
+            continue;
+          }
+
+          result.push({
+            a,
+            b,
+            dir: { x: d.x / len, z: d.z / len },
+            type: seg.type || "wall"
+          });
+        }
+      }
+
+      return result;
+    }
+
+    function removeOverlappingFaces(mesh) {
+      const counts = new Map();
+      for (let i = 0; i < mesh.faces.length; i += 1) {
+        const face = mesh.faces[i];
+        const key = [...face].sort((a, b) => a - b).join(",");
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+
+      const nextFaces = [];
+      const nextGroups = [];
+      for (let i = 0; i < mesh.faces.length; i += 1) {
+        const face = mesh.faces[i];
+        const key = [...face].sort((a, b) => a - b).join(",");
+        if (counts.get(key) === 1) {
+          nextFaces.push(face);
+          nextGroups.push(mesh.faceGroups[i]);
+        }
+      }
+
+      mesh.faces = nextFaces;
+      mesh.faceGroups = nextGroups;
+    }
+
+    function polygonSignedAreaXZ(points) {
+      let area = 0;
+      for (let i = 0; i < points.length; i += 1) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        area += a.x * b.z - b.x * a.z;
+      }
+      return area * 0.5;
+    }
+
+    function extractBoundedFacesFromSegments(worldSegments) {
+      const nodeIndex = new Map();
+      const nodes = [];
+      const edges = new Set();
+
+      function pointKey(p) {
+        return `${p.x.toFixed(6)},${p.z.toFixed(6)}`;
+      }
+
+      function getNodeId(p) {
+        const key = pointKey(p);
+        if (!nodeIndex.has(key)) {
+          nodeIndex.set(key, nodes.length);
+          nodes.push({ x: p.x, z: p.z, neighbors: [] });
+        }
+        return nodeIndex.get(key);
+      }
+
+      for (let i = 0; i < worldSegments.length; i += 1) {
+        const seg = worldSegments[i];
+        const a = getNodeId(seg.a);
+        const b = getNodeId(seg.b);
+        if (a === b) {
+          continue;
         }
 
-        for (let i = 0; i <= steps; i += 1) {
-          const t = i / steps;
-          const gx = Math.round(seg.a.x + dx * t);
-          const gy = Math.round(seg.a.y + dy * t);
-          points.add(`${gx},${gy}`);
+        const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+        if (edges.has(k)) {
+          continue;
         }
-      });
+        edges.add(k);
+        nodes[a].neighbors.push(b);
+        nodes[b].neighbors.push(a);
+      }
 
-      return points;
+      for (let i = 0; i < nodes.length; i += 1) {
+        const center = nodes[i];
+        nodes[i].neighbors.sort((ia, ib) => {
+          const a = nodes[ia];
+          const b = nodes[ib];
+          const aa = Math.atan2(a.z - center.z, a.x - center.x);
+          const ab = Math.atan2(b.z - center.z, b.x - center.x);
+          return aa - ab;
+        });
+      }
+
+      const visited = new Set();
+      const faces = [];
+
+      function edgeKey(a, b) {
+        return `${a}>${b}`;
+      }
+
+      for (let startA = 0; startA < nodes.length; startA += 1) {
+        const neigh = nodes[startA].neighbors;
+        for (let ni = 0; ni < neigh.length; ni += 1) {
+          const startB = neigh[ni];
+          const firstKey = edgeKey(startA, startB);
+          if (visited.has(firstKey)) {
+            continue;
+          }
+
+          const cycle = [];
+          let a = startA;
+          let b = startB;
+          let guard = 0;
+
+          while (guard < 5000) {
+            guard += 1;
+            visited.add(edgeKey(a, b));
+            cycle.push({ x: nodes[a].x, z: nodes[a].z });
+
+            const list = nodes[b].neighbors;
+            const idx = list.indexOf(a);
+            if (idx < 0) {
+              break;
+            }
+            const next = list[(idx - 1 + list.length) % list.length];
+
+            a = b;
+            b = next;
+
+            if (a === startA && b === startB) {
+              break;
+            }
+          }
+
+          if (cycle.length >= 3) {
+            const area = polygonSignedAreaXZ(cycle);
+            if (Math.abs(area) > 1e-8) {
+              faces.push({ points: cycle, area });
+            }
+          }
+        }
+      }
+
+      if (faces.length === 0) {
+        return [];
+      }
+
+      let outerIndex = 0;
+      let outerAreaAbs = Math.abs(faces[0].area);
+      for (let i = 1; i < faces.length; i += 1) {
+        const absArea = Math.abs(faces[i].area);
+        if (absArea > outerAreaAbs) {
+          outerAreaAbs = absArea;
+          outerIndex = i;
+        }
+      }
+
+      const bounded = [];
+      for (let i = 0; i < faces.length; i += 1) {
+        if (i === outerIndex) {
+          continue;
+        }
+        bounded.push(faces[i].points);
+      }
+
+      return bounded;
+    }
+
+    function pointInTriangle2D(p, a, b, c) {
+      const v0 = { x: c.x - a.x, z: c.z - a.z };
+      const v1 = { x: b.x - a.x, z: b.z - a.z };
+      const v2 = { x: p.x - a.x, z: p.z - a.z };
+
+      const dot00 = v0.x * v0.x + v0.z * v0.z;
+      const dot01 = v0.x * v1.x + v0.z * v1.z;
+      const dot02 = v0.x * v2.x + v0.z * v2.z;
+      const dot11 = v1.x * v1.x + v1.z * v1.z;
+      const dot12 = v1.x * v2.x + v1.z * v2.z;
+
+      const denom = dot00 * dot11 - dot01 * dot01;
+      if (Math.abs(denom) < 1e-12) {
+        return false;
+      }
+
+      const inv = 1 / denom;
+      const u = (dot11 * dot02 - dot01 * dot12) * inv;
+      const v = (dot00 * dot12 - dot01 * dot02) * inv;
+      return u >= -1e-8 && v >= -1e-8 && (u + v) <= 1 + 1e-8;
+    }
+
+    function triangulatePolygonXZ(points) {
+      if (points.length < 3) {
+        return [];
+      }
+
+      const area = polygonSignedAreaXZ(points);
+      const poly = area >= 0 ? points.slice() : points.slice().reverse();
+      const indices = poly.map((_, i) => i);
+      const tris = [];
+
+      let guard = 0;
+      while (indices.length > 2 && guard < 10000) {
+        guard += 1;
+        let earFound = false;
+
+        for (let i = 0; i < indices.length; i += 1) {
+          const i0 = indices[(i - 1 + indices.length) % indices.length];
+          const i1 = indices[i];
+          const i2 = indices[(i + 1) % indices.length];
+
+          const a = poly[i0];
+          const b = poly[i1];
+          const c = poly[i2];
+
+          const ab = { x: b.x - a.x, z: b.z - a.z };
+          const ac = { x: c.x - a.x, z: c.z - a.z };
+          const cross = ab.x * ac.z - ab.z * ac.x;
+          if (cross <= 1e-10) {
+            continue;
+          }
+
+          let hasInside = false;
+          for (let j = 0; j < indices.length; j += 1) {
+            const ip = indices[j];
+            if (ip === i0 || ip === i1 || ip === i2) {
+              continue;
+            }
+            if (pointInTriangle2D(poly[ip], a, b, c)) {
+              hasInside = true;
+              break;
+            }
+          }
+
+          if (hasInside) {
+            continue;
+          }
+
+          tris.push([poly[i0], poly[i1], poly[i2]]);
+          indices.splice(i, 1);
+          earFound = true;
+          break;
+        }
+
+        if (!earFound) {
+          break;
+        }
+      }
+
+      return tris;
     }
 
     function buildWallMeshData() {
-      const footprint = collectWallFootprint();
-      const mesh = { name: "FloorPlanWalls", vertices: [], faces: [] };
+      const mesh = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
+      if (segments.length === 0) {
+        return mesh;
+      }
 
-      footprint.forEach(key => {
-        const coords = key.split(",");
-        const gx = Number(coords[0]);
-        const gy = Number(coords[1]);
+      const thickness = getWallThickness();
+      const slabThickness = thickness * 0.5;
+      const height = getWallHeight();
+      const joinMode = joinModeSelect.value;
+      const half = thickness / 2;
 
-        const worldX = gx * GRID_SIZE_UNITS;
-        const worldZ = gy * GRID_SIZE_UNITS;
+      const rawSegments = [];
+      const nodes = new Map();
 
-        for (let level = 0; level < WALL_HEIGHT_CUBES; level += 1) {
-          const worldY = level * CUBE_SIZE + CUBE_SIZE / 2;
-          addCube(mesh, worldX, worldY, worldZ, CUBE_SIZE);
+      function nodeKey(point) {
+        return `${point.x},${point.z}`;
+      }
+
+      function ensureNode(point) {
+        const key = nodeKey(point);
+        if (!nodes.has(key)) {
+          nodes.set(key, { point, dirs: [] });
         }
-      });
+        return nodes.get(key);
+      }
+
+      for (let i = 0; i < segments.length; i += 1) {
+        const raw = segments[i];
+        const a = vec2(raw.a.x * GRID_SIZE_UNITS, raw.a.y * GRID_SIZE_UNITS);
+        const b = vec2(raw.b.x * GRID_SIZE_UNITS, raw.b.y * GRID_SIZE_UNITS);
+        const delta = vec2Sub(b, a);
+        const dir = vec2Normalize(delta);
+        if (vec2Length(dir) < 1e-8) {
+          continue;
+        }
+
+        rawSegments.push({ a, b, type: raw.type || "wall" });
+      }
+
+      const worldSegments = splitSegmentsAtIntersections(rawSegments);
+
+      for (let i = 0; i < worldSegments.length; i += 1) {
+        const seg = worldSegments[i];
+
+        const nodeA = ensureNode(seg.a);
+        const nodeB = ensureNode(seg.b);
+        nodeA.dirs.push(seg.dir);
+        nodeB.dirs.push(vec2Scale(seg.dir, -1));
+      }
+
+      const vertexMap = new Map();
+
+      function getVertexIndex(v) {
+        const key = vertexKey(v);
+        if (vertexMap.has(key)) {
+          return vertexMap.get(key);
+        }
+        const index = mesh.vertices.length;
+        mesh.vertices.push(v);
+        vertexMap.set(key, index);
+        return index;
+      }
+
+      function addFace(face, group) {
+        mesh.faces.push(face);
+        mesh.faceGroups.push(group);
+      }
+
+      function addOrientedQuadGrouped(a, b, c, d, desiredNormal, group) {
+        const ab = sub3(b, a);
+        const ac = sub3(c, a);
+        const n = cross3(ab, ac);
+        const flip = dot3(n, desiredNormal) < 0;
+
+        const i0 = getVertexIndex(a);
+        const i1 = getVertexIndex(b);
+        const i2 = getVertexIndex(c);
+        const i3 = getVertexIndex(d);
+
+        if (flip) {
+          addFace([i0, i2, i1], group);
+          addFace([i0, i3, i2], group);
+        } else {
+          addFace([i0, i1, i2], group);
+          addFace([i0, i2, i3], group);
+        }
+      }
+
+      function addOrientedQuad(a, b, c, d, desiredNormal) {
+        addOrientedQuadGrouped(a, b, c, d, desiredNormal, "walls");
+      }
+
+      function addOrientedTri(a, b, c, desiredNormal, group) {
+        const ab = sub3(b, a);
+        const ac = sub3(c, a);
+        const n = cross3(ab, ac);
+        const flip = dot3(n, desiredNormal) < 0;
+
+        const i0 = getVertexIndex(a);
+        const i1 = getVertexIndex(b);
+        const i2 = getVertexIndex(c);
+
+        if (flip) {
+          addFace([i0, i2, i1], group);
+        } else {
+          addFace([i0, i1, i2], group);
+        }
+      }
+
+      function computeJoinOffset(node, outDir, sideSign) {
+        const base = vec2PerpLeft(outDir);
+        const normal = sideSign > 0 ? base : vec2Scale(base, -1);
+
+        if (joinMode !== "miter" || node.dirs.length !== 2) {
+          return vec2Scale(normal, half);
+        }
+
+        let other = node.dirs[0];
+        if (Math.abs(vec2Dot(other, outDir)) > 0.999) {
+          other = node.dirs[1];
+        }
+
+        const otherBase = vec2PerpLeft(other);
+        const otherNormal = sideSign > 0 ? otherBase : vec2Scale(otherBase, -1);
+        const miter = vec2Normalize(vec2Add(normal, otherNormal));
+        const denom = vec2Dot(miter, normal);
+
+        if (Math.abs(denom) < 0.2) {
+          return vec2Scale(normal, half);
+        }
+
+        const length = Math.min((half / denom), half * 4);
+        return vec2Scale(miter, length);
+      }
+
+      function sanitizePolygonXZ(points) {
+        if (!points || points.length < 3) {
+          return [];
+        }
+
+        const eps = 1e-7;
+        const cleaned = [];
+
+        for (let i = 0; i < points.length; i += 1) {
+          const p = points[i];
+          const prev = cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
+          if (!prev || Math.hypot(p.x - prev.x, p.z - prev.z) > eps) {
+            cleaned.push({ x: p.x, z: p.z });
+          }
+        }
+
+        if (cleaned.length >= 2) {
+          const first = cleaned[0];
+          const last = cleaned[cleaned.length - 1];
+          if (Math.hypot(first.x - last.x, first.z - last.z) <= eps) {
+            cleaned.pop();
+          }
+        }
+
+        if (cleaned.length < 3) {
+          return [];
+        }
+
+        const reduced = [];
+        for (let i = 0; i < cleaned.length; i += 1) {
+          const a = cleaned[(i - 1 + cleaned.length) % cleaned.length];
+          const b = cleaned[i];
+          const c = cleaned[(i + 1) % cleaned.length];
+
+          const abx = b.x - a.x;
+          const abz = b.z - a.z;
+          const bcx = c.x - b.x;
+          const bcz = c.z - b.z;
+          const cross = abx * bcz - abz * bcx;
+
+          if (Math.abs(cross) > 1e-10) {
+            reduced.push(b);
+          }
+        }
+
+        if (reduced.length < 3 || Math.abs(polygonSignedAreaXZ(reduced)) <= 1e-8) {
+          return [];
+        }
+
+        return reduced;
+      }
+
+      function addExtrudedPolygonUp(points, baseY, thicknessY, group) {
+        const poly = sanitizePolygonXZ(points);
+        if (poly.length < 3) {
+          return;
+        }
+
+        const triIndices = triangulatePolygonXZ(poly);
+        for (let i = 0; i < triIndices.length; i += 1) {
+          const tri = triIndices[i];
+          const p0 = tri[0];
+          const p1 = tri[1];
+          const p2 = tri[2];
+
+          const b0 = [p0.x, baseY, p0.z];
+          const b1 = [p1.x, baseY, p1.z];
+          const b2 = [p2.x, baseY, p2.z];
+
+          const t0 = [p0.x, baseY + thicknessY, p0.z];
+          const t1 = [p1.x, baseY + thicknessY, p1.z];
+          const t2 = [p2.x, baseY + thicknessY, p2.z];
+
+          addOrientedTri(t0, t1, t2, [0, 1, 0], group);
+          addOrientedTri(b0, b1, b2, [0, -1, 0], group);
+        }
+
+        let cx = 0;
+        let cz = 0;
+        for (let i = 0; i < poly.length; i += 1) {
+          cx += poly[i].x;
+          cz += poly[i].z;
+        }
+        cx /= poly.length;
+        cz /= poly.length;
+
+        for (let i = 0; i < poly.length; i += 1) {
+          const a = poly[i];
+          const b = poly[(i + 1) % poly.length];
+
+          const bottomA = [a.x, baseY, a.z];
+          const bottomB = [b.x, baseY, b.z];
+          const topA = [a.x, baseY + thicknessY, a.z];
+          const topB = [b.x, baseY + thicknessY, b.z];
+
+          const mx = (a.x + b.x) / 2;
+          const mz = (a.z + b.z) / 2;
+          const nx = mx - cx;
+          const nz = mz - cz;
+          const len = Math.hypot(nx, nz);
+          const normal = len < 1e-8 ? [1, 0, 0] : [nx / len, 0, nz / len];
+
+          addOrientedQuadGrouped(bottomA, bottomB, topB, topA, normal, group);
+        }
+      }
+
+      for (let i = 0; i < worldSegments.length; i += 1) {
+        const seg = worldSegments[i];
+        const startNode = nodes.get(nodeKey(seg.a));
+        const endNode = nodes.get(nodeKey(seg.b));
+        const segType = seg.type || "wall";
+        const baseY = segType === "door" ? Math.min(DOOR_HEAD_HEIGHT_UNITS, height) : 0;
+        if (baseY >= height - 1e-6) {
+          continue;
+        }
+
+        const sLeft = vec2Add(seg.a, computeJoinOffset(startNode, seg.dir, 1));
+        const sRight = vec2Add(seg.a, computeJoinOffset(startNode, seg.dir, -1));
+        const endOut = vec2Scale(seg.dir, -1);
+        const eLeft = vec2Add(seg.b, computeJoinOffset(endNode, endOut, -1));
+        const eRight = vec2Add(seg.b, computeJoinOffset(endNode, endOut, 1));
+
+        const v0 = [sLeft.x, baseY, sLeft.z];
+        const v1 = [sRight.x, baseY, sRight.z];
+        const v2 = [eRight.x, baseY, eRight.z];
+        const v3 = [eLeft.x, baseY, eLeft.z];
+        const v4 = [sLeft.x, height, sLeft.z];
+        const v5 = [sRight.x, height, sRight.z];
+        const v6 = [eRight.x, height, eRight.z];
+        const v7 = [eLeft.x, height, eLeft.z];
+
+        const leftN = vec2PerpLeft(seg.dir);
+        const rightN = vec2Scale(leftN, -1);
+        const startN = vec2Scale(seg.dir, -1);
+        const endN = seg.dir;
+
+        addOrientedQuad(v4, v7, v6, v5, [0, 1, 0]);
+        addOrientedQuad(v0, v1, v2, v3, [0, -1, 0]);
+        addOrientedQuad(v0, v3, v7, v4, [leftN.x, 0, leftN.z]);
+        addOrientedQuad(v1, v5, v6, v2, [rightN.x, 0, rightN.z]);
+        addOrientedQuad(v0, v4, v5, v1, [startN.x, 0, startN.z]);
+        addOrientedQuad(v3, v2, v6, v7, [endN.x, 0, endN.z]);
+      }
+
+      const sealedFaces = extractBoundedFacesFromSegments(worldSegments);
+      for (let i = 0; i < sealedFaces.length; i += 1) {
+        const poly = sealedFaces[i];
+        addExtrudedPolygonUp(poly, 0, slabThickness, "floor");
+        addExtrudedPolygonUp(poly, height, slabThickness, "ceiling");
+      }
+
+      removeOverlappingFaces(mesh);
 
       return mesh;
     }
@@ -331,11 +1091,16 @@
         positions[i * 3 + 2] = meshData.vertices[i][2];
       }
 
-      const indices = new Uint32Array(meshData.faces.length * 3);
+      const groupedIndices = {
+        walls: [],
+        floor: [],
+        ceiling: []
+      };
+
       for (let i = 0; i < meshData.faces.length; i += 1) {
-        indices[i * 3 + 0] = meshData.faces[i][0];
-        indices[i * 3 + 1] = meshData.faces[i][2];
-        indices[i * 3 + 2] = meshData.faces[i][1];
+        const group = meshData.faceGroups && meshData.faceGroups[i] ? meshData.faceGroups[i] : "walls";
+        const bucket = groupedIndices[group] || groupedIndices.walls;
+        bucket.push(meshData.faces[i][0], meshData.faces[i][1], meshData.faces[i][2]);
       }
 
       const posMin = [Infinity, Infinity, Infinity];
@@ -350,52 +1115,92 @@
       }
 
       const positionBytes = new Uint8Array(positions.buffer);
-      const indexBytes = new Uint8Array(indices.buffer);
+      const indexGroups = [
+        { name: "walls", material: 0, data: new Uint32Array(groupedIndices.walls) },
+        { name: "floor", material: 1, data: new Uint32Array(groupedIndices.floor) },
+        { name: "ceiling", material: 2, data: new Uint32Array(groupedIndices.ceiling) }
+      ].filter(g => g.data.length > 0);
 
-      const posOffset = 0;
-      const idxOffset = positionBytes.byteLength;
-      const binByteLength = idxOffset + indexBytes.byteLength;
+      const bufferViews = [
+        { buffer: 0, byteOffset: 0, byteLength: positionBytes.byteLength, target: 34962 }
+      ];
 
+      const accessors = [
+        {
+          bufferView: 0,
+          byteOffset: 0,
+          componentType: 5126,
+          count: meshData.vertices.length,
+          type: "VEC3",
+          min: posMin,
+          max: posMax
+        }
+      ];
+
+      const meshDefs = [];
+      let currentOffset = positionBytes.byteLength;
+      const chunks = [positionBytes];
+
+      for (let i = 0; i < indexGroups.length; i += 1) {
+        const group = indexGroups[i];
+        const bytes = new Uint8Array(group.data.buffer);
+        const viewIndex = bufferViews.length;
+        bufferViews.push({
+          buffer: 0,
+          byteOffset: currentOffset,
+          byteLength: bytes.byteLength,
+          target: 34963
+        });
+
+        const accessorIndex = accessors.length;
+        accessors.push({
+          bufferView: viewIndex,
+          byteOffset: 0,
+          componentType: 5125,
+          count: group.data.length,
+          type: "SCALAR"
+        });
+
+        const prettyName = group.name.charAt(0).toUpperCase() + group.name.slice(1);
+        meshDefs.push({
+          name: prettyName,
+          primitives: [{
+            attributes: { POSITION: 0 },
+            indices: accessorIndex,
+            material: group.material,
+            mode: 4
+          }]
+        });
+
+        chunks.push(bytes);
+        currentOffset += bytes.byteLength;
+      }
+
+      const binByteLength = currentOffset;
       const bin = new Uint8Array(binByteLength);
-      bin.set(positionBytes, posOffset);
-      bin.set(indexBytes, idxOffset);
+      let writeOffset = 0;
+      for (let i = 0; i < chunks.length; i += 1) {
+        bin.set(chunks[i], writeOffset);
+        writeOffset += chunks[i].byteLength;
+      }
 
       const gltf = {
         asset: { version: "2.0", generator: "FloorPlanWallExporter" },
         scene: 0,
-        scenes: [{ nodes: [0] }],
-        nodes: [{ mesh: 0, name: meshData.name || "FloorPlanWalls" }],
-        meshes: [{
-          name: meshData.name || "FloorPlanWalls",
-          primitives: [{
-            attributes: { POSITION: 0 },
-            indices: 1,
-            mode: 4
-          }]
-        }],
-        buffers: [{ byteLength: binByteLength }],
-        bufferViews: [
-          { buffer: 0, byteOffset: posOffset, byteLength: positionBytes.byteLength, target: 34962 },
-          { buffer: 0, byteOffset: idxOffset, byteLength: indexBytes.byteLength, target: 34963 }
+        scenes: [{ nodes: meshDefs.map((_, i) => i) }],
+        nodes: meshDefs.map((m, i) => ({ mesh: i, name: `${meshData.name || "FloorPlan"}_${m.name}` })),
+        meshes: meshDefs.map(m => ({
+          name: m.name,
+          primitives: m.primitives
+        })),
+        materials: [
+          { name: "Walls", pbrMetallicRoughness: { baseColorFactor: [0.78, 0.80, 0.84, 1], metallicFactor: 0, roughnessFactor: 1 }, doubleSided: false },
+          { name: "Floor", pbrMetallicRoughness: { baseColorFactor: [0.68, 0.74, 0.70, 1], metallicFactor: 0, roughnessFactor: 1 }, doubleSided: false },
+          { name: "Ceiling", pbrMetallicRoughness: { baseColorFactor: [0.92, 0.92, 0.92, 1], metallicFactor: 0, roughnessFactor: 1 }, doubleSided: false }
         ],
-        accessors: [
-          {
-            bufferView: 0,
-            byteOffset: 0,
-            componentType: 5126,
-            count: meshData.vertices.length,
-            type: "VEC3",
-            min: posMin,
-            max: posMax
-          },
-          {
-            bufferView: 1,
-            byteOffset: 0,
-            componentType: 5125,
-            count: meshData.faces.length * 3,
-            type: "SCALAR"
-          }
-        ]
+        buffers: [{ byteLength: binByteLength }],
+        bufferViews,
+        accessors
       };
 
       const jsonBytes = new TextEncoder().encode(JSON.stringify(gltf));
@@ -438,15 +1243,19 @@
         return;
       }
 
-      status.textContent = "Building wall cubes and exporting GLB...";
+      status.textContent = "Building wall geometry and exporting GLB...";
 
       try {
         const meshData = buildWallMeshData();
+        if (meshData.vertices.length === 0 || meshData.faces.length === 0) {
+          status.textContent = "No geometry generated. Check wall settings and plan lines.";
+          return;
+        }
         const glbBuffer = buildGlbFromMesh(meshData);
         const blob = new Blob([glbBuffer], { type: "model/gltf-binary" });
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         downloadBlob(blob, `floor-plan-walls-${timestamp}.glb`);
-        status.textContent = "Walls GLB exported.";
+        status.textContent = `Walls GLB exported. Vertices: ${meshData.vertices.length}, Triangles: ${meshData.faces.length}`;
       } catch (error) {
         console.error(error);
         status.textContent = "Failed to export walls GLB. Check browser console for details.";
@@ -455,8 +1264,41 @@
 
     canvas.addEventListener("mousedown", event => {
       const p = getPointerPosition(event);
-      startGrid = canvasToGrid(p.x, p.y);
-      pointerGrid = startGrid;
+      pointerGrid = canvasToGrid(p.x, p.y);
+
+      if (activeTool === "select") {
+        selectedSegmentIndex = findNearestSegmentIndex(pointerGrid, () => true);
+        if (selectedSegmentIndex >= 0) {
+          const seg = segments[selectedSegmentIndex];
+          dragState = {
+            index: selectedSegmentIndex,
+            startPointer: clonePoint(pointerGrid),
+            startA: clonePoint(seg.a),
+            startB: clonePoint(seg.b)
+          };
+          status.textContent = `Selected ${seg.type === "door" ? "door" : "wall"}. Drag to move.`;
+        } else {
+          dragState = null;
+          status.textContent = "No segment selected.";
+        }
+        redraw();
+        return;
+      }
+
+      if (activeTool === "erase") {
+        const index = findNearestSegmentIndex(pointerGrid, seg => seg.type !== "door");
+        if (index >= 0) {
+          segments.splice(index, 1);
+          selectedSegmentIndex = -1;
+          status.textContent = "Wall removed.";
+        } else {
+          status.textContent = "No wall found under cursor.";
+        }
+        redraw();
+        return;
+      }
+
+      startGrid = clonePoint(pointerGrid);
       drawing = true;
       redraw();
     });
@@ -464,10 +1306,34 @@
     canvas.addEventListener("mousemove", event => {
       const p = getPointerPosition(event);
       pointerGrid = canvasToGrid(p.x, p.y);
+
+      if (activeTool === "select" && dragState) {
+        const dx = pointerGrid.x - dragState.startPointer.x;
+        const dy = pointerGrid.y - dragState.startPointer.y;
+        const seg = segments[dragState.index];
+        seg.a.x = dragState.startA.x + dx;
+        seg.a.y = dragState.startA.y + dy;
+        seg.b.x = dragState.startB.x + dx;
+        seg.b.y = dragState.startB.y + dy;
+      }
+
       redraw();
     });
 
     canvas.addEventListener("mouseup", event => {
+      if (activeTool === "select") {
+        if (dragState) {
+          status.textContent = "Segment moved.";
+        }
+        dragState = null;
+        redraw();
+        return;
+      }
+
+      if (activeTool === "erase") {
+        return;
+      }
+
       if (!drawing || !startGrid) {
         return;
       }
@@ -475,12 +1341,21 @@
       const p = getPointerPosition(event);
       const endGrid = canvasToGrid(p.x, p.y);
 
-      if (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y) {
+      if (activeTool === "door") {
+        const doorEnd = projectDoorEndpoint(startGrid, endGrid);
         segments.push({
           a: { x: startGrid.x, y: startGrid.y },
-          b: { x: endGrid.x, y: endGrid.y }
+          b: { x: doorEnd.x, y: doorEnd.y },
+          type: "door"
         });
-        status.textContent = `Line added. Total lines: ${segments.length}`;
+        status.textContent = `Door added (width ${DOOR_WIDTH_UNITS}). Total segments: ${segments.length}`;
+      } else if (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y) {
+        segments.push({
+          a: { x: startGrid.x, y: startGrid.y },
+          b: { x: endGrid.x, y: endGrid.y },
+          type: "wall"
+        });
+        status.textContent = `Wall added. Total segments: ${segments.length}`;
       }
 
       drawing = false;
@@ -489,6 +1364,9 @@
     });
 
     canvas.addEventListener("mouseleave", () => {
+      if (activeTool === "select") {
+        dragState = null;
+      }
       pointerGrid = null;
       redraw();
     });
@@ -503,9 +1381,20 @@
 
     clearButton.addEventListener("click", () => {
       segments.length = 0;
+      selectedSegmentIndex = -1;
+      dragState = null;
       status.textContent = "Plan cleared.";
       redraw();
     });
+
+    toolWallButton.addEventListener("click", () => setTool("wall"));
+    toolDoorButton.addEventListener("click", () => setTool("door"));
+    toolSelectButton.addEventListener("click", () => setTool("select"));
+    toolEraseButton.addEventListener("click", () => setTool("erase"));
+
+    thicknessInput.addEventListener("change", redraw);
+    heightInput.addEventListener("change", redraw);
+    joinModeSelect.addEventListener("change", redraw);
 
     exportButton.addEventListener("click", () => {
       exportWallsAsGlb();
