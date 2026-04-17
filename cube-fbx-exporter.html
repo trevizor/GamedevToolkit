@@ -325,6 +325,7 @@
       <button id="toolHalfWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Half Wall Tool</button>
       <button id="toolFakeWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Fake Wall Tool</button>
       <button id="toolBoxBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Box Tool</button>
+      <button id="toolEllipseBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)" hidden>Ellipse Tool</button>
       <button id="toolDoorBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Door Tool</button>
       <button id="toolWindowBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Window Tool</button>
       <button id="toolCutBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Cut Tool</button>
@@ -356,6 +357,7 @@
           <button id="floorMoveUpBtn" type="button" class="secondary">Move Up</button>
           <button id="floorMoveDownBtn" type="button" class="secondary">Move Down</button>
           <button id="floorRemoveBtn" type="button" class="secondary">Remove</button>
+          <button id="onionToggleBtn" type="button" class="secondary">Onion View: On</button>
         </div>
         <div id="floorsList" class="floors-list"></div>
       </aside>
@@ -387,6 +389,7 @@
     const clearButton = document.getElementById("clearBtn");
     const toolWallButton = document.getElementById("toolWallBtn");
     const toolBoxButton = document.getElementById("toolBoxBtn");
+    const toolEllipseButton = document.getElementById("toolEllipseBtn");
     const toolHalfWallButton = document.getElementById("toolHalfWallBtn");
     const toolFakeWallButton = document.getElementById("toolFakeWallBtn");
     const toolDoorButton = document.getElementById("toolDoorBtn");
@@ -401,6 +404,7 @@
     const floorMoveUpButton = document.getElementById("floorMoveUpBtn");
     const floorMoveDownButton = document.getElementById("floorMoveDownBtn");
     const floorRemoveButton = document.getElementById("floorRemoveBtn");
+    const onionToggleButton = document.getElementById("onionToggleBtn");
     const floorsList = document.getElementById("floorsList");
     const planTitleInput = document.getElementById("planTitleInput");
     const zoomReadout = document.getElementById("zoomReadout");
@@ -450,6 +454,8 @@
     let redoSnapshot = null;
     let isExportPropsOpen = false;
     let isSlabPreviewVisible = false;
+    let isOnionViewEnabled = true;
+    let ellipseForceCircle = false;
 
     function getCurrentLevel() {
       return floors[currentLevelIndex];
@@ -540,6 +546,7 @@
     const toolButtons = {
       wall: toolWallButton,
       box: toolBoxButton,
+      ellipse: toolEllipseButton,
       halfwall: toolHalfWallButton,
       fakewall: toolFakeWallButton,
       door: toolDoorButton,
@@ -560,7 +567,8 @@
     function saveUiState() {
       try {
         localStorage.setItem(LOCAL_UI_STORAGE_KEY, JSON.stringify({
-          isExportPropsOpen
+          isExportPropsOpen,
+          isOnionViewEnabled
         }));
       } catch (error) {
         console.warn("Failed to save UI state.", error);
@@ -572,14 +580,21 @@
         const raw = localStorage.getItem(LOCAL_UI_STORAGE_KEY);
         if (!raw) {
           isExportPropsOpen = false;
+          isOnionViewEnabled = true;
           return;
         }
         const data = JSON.parse(raw);
         isExportPropsOpen = !!(data && data.isExportPropsOpen);
+        isOnionViewEnabled = !(data && data.isOnionViewEnabled === false);
       } catch (error) {
         console.warn("Failed to load UI state.", error);
         isExportPropsOpen = false;
+        isOnionViewEnabled = true;
       }
+    }
+
+    function updateOnionToggleButton() {
+      onionToggleButton.textContent = isOnionViewEnabled ? "Onion View: On" : "Onion View: Off";
     }
 
     function applyExportPropsVisibility() {
@@ -774,6 +789,11 @@
     }
 
     function drawSegments() {
+      if (!isOnionViewEnabled) {
+        drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
+        return;
+      }
+
       const below = floors[currentLevelIndex - 1];
       const above = floors[currentLevelIndex + 1];
 
@@ -873,9 +893,130 @@
       ctx.restore();
     }
 
+    function buildEllipsePoints(center, target, forceCircle) {
+      let rx = Math.abs(target.x - center.x);
+      let ry = Math.abs(target.y - center.y);
+
+      if (forceCircle) {
+        const radius = Math.max(rx, ry);
+        rx = radius;
+        ry = radius;
+      }
+
+      if (rx < 1e-6 || ry < 1e-6) {
+        return [];
+      }
+
+      // Increase node count as ellipse radius grows for smoother large shapes.
+      const approxCircumference = 2 * Math.PI * Math.sqrt((rx * rx + ry * ry) * 0.5);
+      const nodeCount = Math.max(16, Math.min(256, Math.round(approxCircumference * 2)));
+      const rawPoints = [];
+
+      for (let i = 0; i < nodeCount; i += 1) {
+        const t = (i / nodeCount) * Math.PI * 2;
+        rawPoints.push({
+          x: center.x + Math.cos(t) * rx,
+          y: center.y + Math.sin(t) * ry
+        });
+      }
+
+      const points = [];
+      const seen = new Set();
+      for (let i = 0; i < rawPoints.length; i += 1) {
+        const snapped = {
+          x: Math.round(rawPoints[i].x),
+          y: Math.round(rawPoints[i].y)
+        };
+        const key = `${snapped.x},${snapped.y}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        points.push(snapped);
+      }
+
+      if (points.length >= 2) {
+        const first = points[0];
+        const last = points[points.length - 1];
+        if (first.x === last.x && first.y === last.y) {
+          points.pop();
+        }
+      }
+
+      return points;
+    }
+
+    function mergeCollinearLoopPoints(points) {
+      if (!Array.isArray(points) || points.length < 3) {
+        return Array.isArray(points) ? points.slice() : [];
+      }
+
+      const merged = points.slice();
+      const crossTolerance = 1e-9;
+      let changed = true;
+
+      while (changed && merged.length >= 3) {
+        changed = false;
+
+        for (let i = 0; i < merged.length; i += 1) {
+          const prev = merged[(i - 1 + merged.length) % merged.length];
+          const curr = merged[i];
+          const next = merged[(i + 1) % merged.length];
+
+          const v1x = curr.x - prev.x;
+          const v1y = curr.y - prev.y;
+          const v2x = next.x - curr.x;
+          const v2y = next.y - curr.y;
+          const cross = v1x * v2y - v1y * v2x;
+
+          // Remove middle points that keep the same straight direction.
+          if (Math.abs(cross) <= crossTolerance) {
+            merged.splice(i, 1);
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      return merged;
+    }
+
+    function addEllipseAsWalls(center, target, forceCircle) {
+      const points = mergeCollinearLoopPoints(buildEllipsePoints(center, target, forceCircle));
+      if (points.length < 3) {
+        return 0;
+      }
+
+      const beforeCount = segments.length;
+      for (let i = 0; i < points.length; i += 1) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        addWallSegmentWithCut(a, b);
+      }
+
+      return Math.max(0, segments.length - beforeCount);
+    }
+
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box")) {
-        if (activeTool === "box") {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box" || activeTool === "ellipse")) {
+        if (activeTool === "ellipse") {
+          const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
+          if (points.length >= 3) {
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#1479ff";
+            ctx.beginPath();
+            for (let i = 0; i < points.length; i += 1) {
+              const p = gridToCanvas(points[i]);
+              if (i === 0) {
+                ctx.moveTo(p.x, p.y);
+              } else {
+                ctx.lineTo(p.x, p.y);
+              }
+            }
+            ctx.closePath();
+            ctx.stroke();
+          }
+        } else if (activeTool === "box") {
           const minX = Math.min(startGrid.x, pointerGrid.x);
           const maxX = Math.max(startGrid.x, pointerGrid.x);
           const minY = Math.min(startGrid.y, pointerGrid.y);
@@ -1143,6 +1284,7 @@
       activeTool = nextTool;
       drawing = false;
       isErasingDrag = false;
+      ellipseForceCircle = false;
       startGrid = null;
       selectedSegmentIndices.clear();
       isMarqueeSelecting = false;
@@ -2782,6 +2924,7 @@
       }
 
       startGrid = clonePoint(pointerGrid);
+      ellipseForceCircle = activeTool === "ellipse" && event.ctrlKey;
       drawing = true;
       redraw();
     });
@@ -2803,6 +2946,10 @@
 
       pointerGrid = canvasToGrid(p.x, p.y);
       const pointerWorld = canvasToWorld(p.x, p.y);
+
+      if (drawing && activeTool === "ellipse") {
+        ellipseForceCircle = event.ctrlKey;
+      }
 
       if (activeTool === "erase" && isErasingDrag) {
         if (eraseAtPoint(pointerGrid)) {
@@ -2961,6 +3108,12 @@
         addWallSegmentWithCut(p2, p3);
         addWallSegmentWithCut(p3, p0);
         status.textContent = `Box added. Total segments: ${segments.length}`;
+      } else if (activeTool === "ellipse") {
+        const forceCircle = ellipseForceCircle || event.ctrlKey;
+        const addedCount = addEllipseAsWalls(startGrid, endGrid, forceCircle);
+        if (addedCount > 0) {
+          status.textContent = `${forceCircle ? "Circle" : "Ellipse"} added. Nodes: ${addedCount}. Total segments: ${segments.length}`;
+        }
       } else if (activeTool === "halfwall" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
         addSegmentWithCuts("halfwall", startGrid, endGrid);
         status.textContent = `Half wall added. Total segments: ${segments.length}`;
@@ -2988,6 +3141,7 @@
         marqueeMode = "replace";
         dragState = null;
       }
+      ellipseForceCircle = false;
       pointerGrid = null;
       redraw();
     });
@@ -3124,6 +3278,7 @@
 
     toolWallButton.addEventListener("click", () => setTool("wall"));
     toolBoxButton.addEventListener("click", () => setTool("box"));
+    toolEllipseButton.addEventListener("click", () => setTool("ellipse"));
     toolHalfWallButton.addEventListener("click", () => setTool("halfwall"));
     toolFakeWallButton.addEventListener("click", () => setTool("fakewall"));
     toolDoorButton.addEventListener("click", () => setTool("door"));
@@ -3150,6 +3305,14 @@
 
     floorRemoveButton.addEventListener("click", () => {
       removeCurrentLevel();
+    });
+
+    onionToggleButton.addEventListener("click", () => {
+      isOnionViewEnabled = !isOnionViewEnabled;
+      updateOnionToggleButton();
+      saveUiState();
+      status.textContent = isOnionViewEnabled ? "Onion view enabled." : "Onion view disabled.";
+      redraw();
     });
 
     planTitleInput.addEventListener("input", () => {
@@ -3206,6 +3369,7 @@
 
     loadUiState();
     setPlanTitle(planTitle);
+    updateOnionToggleButton();
     updateSlabPreviewToggleButton();
     applyExportPropsVisibility();
     renderLevelList();
