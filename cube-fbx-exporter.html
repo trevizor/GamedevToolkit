@@ -457,9 +457,11 @@
       const cx = originCanvas.x;
       const cy = originCanvas.y;
       const markerHalf = 10;
+      const minorMarkerHalf = 5;
+      const markerStepGrid = Math.max(1, Math.round(5 / GRID_SIZE_UNITS));
 
       ctx.save();
-      ctx.strokeStyle = "#93c5fd";
+      ctx.strokeStyle = "#3b82f6";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(cx - markerHalf, cy + 0.5);
@@ -467,6 +469,31 @@
       ctx.moveTo(cx + 0.5, cy - markerHalf);
       ctx.lineTo(cx + 0.5, cy + markerHalf);
       ctx.stroke();
+
+      ctx.strokeStyle = "#60a5fa";
+      ctx.lineWidth = 1.2;
+
+      const minGX = Math.floor((0 - viewOffsetX) / gridPx);
+      const maxGX = Math.ceil((canvas.width - viewOffsetX) / gridPx);
+      const minGY = Math.floor((0 - viewOffsetY) / gridPx);
+      const maxGY = Math.ceil((canvas.height - viewOffsetY) / gridPx);
+      const startMarkerGX = Math.ceil(minGX / markerStepGrid) * markerStepGrid;
+      const startMarkerGY = Math.ceil(minGY / markerStepGrid) * markerStepGrid;
+
+      for (let gx = startMarkerGX; gx <= maxGX; gx += markerStepGrid) {
+        for (let gy = startMarkerGY; gy <= maxGY; gy += markerStepGrid) {
+          if (gx === 0 && gy === 0) {
+            continue;
+          }
+          const p = gridToCanvas({ x: gx, y: gy });
+          ctx.beginPath();
+          ctx.moveTo(p.x - minorMarkerHalf, p.y + 0.5);
+          ctx.lineTo(p.x + minorMarkerHalf, p.y + 0.5);
+          ctx.moveTo(p.x + 0.5, p.y - minorMarkerHalf);
+          ctx.lineTo(p.x + 0.5, p.y + minorMarkerHalf);
+          ctx.stroke();
+        }
+      }
       ctx.restore();
     }
 
