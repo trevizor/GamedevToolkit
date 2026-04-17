@@ -34,7 +34,7 @@
     }
 
     .card {
-      width: min(980px, 100%);
+      width: 95vw;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -42,12 +42,20 @@
       box-shadow: 0 10px 30px rgba(15, 35, 65, 0.08);
     }
 
-    .toolbar {
+    .toolbar-top,
+    .toolbar-tools {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
-      margin-bottom: 14px;
       align-items: center;
+    }
+
+    .toolbar-top {
+      margin-bottom: 10px;
+    }
+
+    .toolbar-tools {
+      margin-bottom: 14px;
     }
 
     .meta {
@@ -180,15 +188,11 @@
     <h1>Floor Plan to Walls GLB</h1>
     <p>Draw line segments snapped to a 0.25 grid. Export creates clean wall geometry from those segments.</p>
 
-    <div class="toolbar">
+    <div class="toolbar-top">
       <button id="exportBtn" type="button">Export Walls GLB</button>
-      <button id="undoBtn" type="button" class="secondary">Undo Last Line</button>
+      <button id="saveBtn" type="button" class="secondary">Save Plan</button>
+      <button id="loadBtn" type="button" class="secondary">Load Plan</button>
       <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
-      <button id="toolWallBtn" type="button" class="secondary tool active">Wall Tool</button>
-      <button id="toolHalfWallBtn" type="button" class="secondary tool">Half Wall Tool</button>
-      <button id="toolDoorBtn" type="button" class="secondary tool">Door Tool</button>
-      <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
-      <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
       <label class="field">Thickness
         <input id="thicknessInput" type="number" min="0.01" step="0.125" value="0.125" />
       </label>
@@ -204,6 +208,18 @@
       <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
     </div>
 
+    <div class="toolbar-tools">
+      <button id="toolWallBtn" type="button" class="secondary tool active">Wall Tool</button>
+      <button id="toolHalfWallBtn" type="button" class="secondary tool">Half Wall Tool</button>
+      <button id="toolFakeWallBtn" type="button" class="secondary tool">Fake Wall Tool</button>
+      <button id="toolBoxBtn" type="button" class="secondary tool">Box Tool</button>
+      <button id="toolDoorBtn" type="button" class="secondary tool">Door Tool</button>
+      <button id="toolCutBtn" type="button" class="secondary tool">Cut Tool</button>
+      <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
+      <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
+      <button id="undoBtn" type="button" class="secondary">Undo Last Line</button>
+    </div>
+
     <div class="canvas-wrap">
       <canvas id="planCanvas" width="920" height="560"></canvas>
     </div>
@@ -217,6 +233,7 @@
     </div>
 
     <div id="status" aria-live="polite"></div>
+    <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
   </main>
 
   <script>
@@ -230,11 +247,17 @@
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
 
     const exportButton = document.getElementById("exportBtn");
+    const saveButton = document.getElementById("saveBtn");
+    const loadButton = document.getElementById("loadBtn");
+    const loadInput = document.getElementById("loadInput");
     const undoButton = document.getElementById("undoBtn");
     const clearButton = document.getElementById("clearBtn");
     const toolWallButton = document.getElementById("toolWallBtn");
+    const toolBoxButton = document.getElementById("toolBoxBtn");
     const toolHalfWallButton = document.getElementById("toolHalfWallBtn");
+    const toolFakeWallButton = document.getElementById("toolFakeWallBtn");
     const toolDoorButton = document.getElementById("toolDoorBtn");
+    const toolCutButton = document.getElementById("toolCutBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
@@ -254,17 +277,25 @@
     let startGrid = null;
     let drawing = false;
     let isPanning = false;
+    let isErasingDrag = false;
     let panLastPointer = null;
     let viewOffsetX = 0;
     let viewOffsetY = 0;
     let activeTool = "wall";
-    let selectedSegmentIndex = -1;
+    let selectedSegmentIndices = new Set();
+    let isMarqueeSelecting = false;
+    let marqueeStartWorld = null;
+    let marqueeEndWorld = null;
+    let marqueeMode = "replace";
     let dragState = null;
 
     const toolButtons = {
       wall: toolWallButton,
+      box: toolBoxButton,
       halfwall: toolHalfWallButton,
+      fakewall: toolFakeWallButton,
       door: toolDoorButton,
+      cut: toolCutButton,
       select: toolSelectButton,
       erase: toolEraseButton
     };
@@ -293,6 +324,13 @@
       return {
         x: Math.round((x - viewOffsetX) / gridPx),
         y: Math.round((y - viewOffsetY) / gridPx)
+      };
+    }
+
+    function canvasToWorld(x, y) {
+      return {
+        x: (x - viewOffsetX) / gridPx,
+        y: (y - viewOffsetY) / gridPx
       };
     }
 
@@ -335,11 +373,13 @@
 
     function drawSegments() {
       segments.forEach((seg, i) => {
-        ctx.lineWidth = i === selectedSegmentIndex ? 4 : 3;
+        ctx.lineWidth = selectedSegmentIndices.has(i) ? 4 : 3;
         if (seg.type === "door") {
           ctx.strokeStyle = "#d97706";
         } else if (seg.type === "halfwall") {
           ctx.strokeStyle = "#0e7490";
+        } else if (seg.type === "fakewall") {
+          ctx.strokeStyle = "#cbd5e1";
         } else {
           ctx.strokeStyle = "#0f1722";
         }
@@ -353,22 +393,48 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "halfwall")) {
-        const a = gridToCanvas(startGrid);
-        const target = activeTool === "door" ? projectDoorEndpoint(startGrid, pointerGrid) : pointerGrid;
-        const b = gridToCanvas(target);
-        ctx.lineWidth = 3;
-        if (activeTool === "door") {
-          ctx.strokeStyle = "#d97706";
-        } else if (activeTool === "halfwall") {
-          ctx.strokeStyle = "#0e7490";
-        } else {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box")) {
+        if (activeTool === "box") {
+          const minX = Math.min(startGrid.x, pointerGrid.x);
+          const maxX = Math.max(startGrid.x, pointerGrid.x);
+          const minY = Math.min(startGrid.y, pointerGrid.y);
+          const maxY = Math.max(startGrid.y, pointerGrid.y);
+          const corners = [
+            { x: minX, y: minY },
+            { x: maxX, y: minY },
+            { x: maxX, y: maxY },
+            { x: minX, y: maxY }
+          ];
+
+          ctx.lineWidth = 3;
           ctx.strokeStyle = "#1479ff";
+          for (let i = 0; i < 4; i += 1) {
+            const a = gridToCanvas(corners[i]);
+            const b = gridToCanvas(corners[(i + 1) % 4]);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+        } else {
+          const a = gridToCanvas(startGrid);
+          const target = activeTool === "door" ? projectDoorEndpoint(startGrid, pointerGrid) : pointerGrid;
+          const b = gridToCanvas(target);
+          ctx.lineWidth = 3;
+          if (activeTool === "door") {
+            ctx.strokeStyle = "#d97706";
+          } else if (activeTool === "halfwall") {
+            ctx.strokeStyle = "#0e7490";
+          } else if (activeTool === "fakewall") {
+            ctx.strokeStyle = "#cbd5e1";
+          } else {
+            ctx.strokeStyle = "#1479ff";
+          }
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
         }
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
       }
 
       if (pointerGrid) {
@@ -377,6 +443,24 @@
         ctx.beginPath();
         ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
         ctx.fill();
+      }
+
+      if (activeTool === "select" && isMarqueeSelecting && marqueeStartWorld && marqueeEndWorld) {
+        const a = gridToCanvas(marqueeStartWorld);
+        const b = gridToCanvas(marqueeEndWorld);
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        const w = Math.abs(a.x - b.x);
+        const h = Math.abs(a.y - b.y);
+
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = "#1479ff";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = "rgba(20,121,255,0.08)";
+        ctx.fillRect(x, y, w, h);
+        ctx.restore();
       }
     }
 
@@ -392,9 +476,10 @@
       const wallHeight = getWallHeight().toFixed(2);
       const wallThickness = getWallThickness().toFixed(2);
       const wallCount = segments.filter(seg => seg.type === "wall").length;
+      const fakeWallCount = segments.filter(seg => seg.type === "fakewall").length;
       const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount}`;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -434,8 +519,13 @@
     function setTool(nextTool) {
       activeTool = nextTool;
       drawing = false;
+      isErasingDrag = false;
       startGrid = null;
-      selectedSegmentIndex = -1;
+      selectedSegmentIndices.clear();
+      isMarqueeSelecting = false;
+      marqueeStartWorld = null;
+      marqueeEndWorld = null;
+      marqueeMode = "replace";
       dragState = null;
 
       Object.keys(toolButtons).forEach(key => {
@@ -444,6 +534,73 @@
 
       status.textContent = `Tool changed to ${activeTool}.`;
       redraw();
+    }
+
+    function cycleToolGroup(group, groupName) {
+      const currentIndex = group.indexOf(activeTool);
+      const nextTool = currentIndex >= 0 ? group[(currentIndex + 1) % group.length] : group[0];
+      setTool(nextTool);
+      status.textContent = `${groupName}: ${nextTool}`;
+      redraw();
+    }
+
+    function eraseAtPoint(point) {
+      const index = findNearestSegmentIndex(point, () => true);
+      if (index >= 0) {
+        segments.splice(index, 1);
+        selectedSegmentIndices.clear();
+        return true;
+      }
+      return false;
+    }
+
+    function getRectFromWorldPoints(a, b) {
+      return {
+        minX: Math.min(a.x, b.x),
+        maxX: Math.max(a.x, b.x),
+        minY: Math.min(a.y, b.y),
+        maxY: Math.max(a.y, b.y)
+      };
+    }
+
+    function pointInRect(point, rect) {
+      return point.x >= rect.minX && point.x <= rect.maxX && point.y >= rect.minY && point.y <= rect.maxY;
+    }
+
+    function segmentIntersectsRect(seg, rect) {
+      if (pointInRect(seg.a, rect) || pointInRect(seg.b, rect)) {
+        return true;
+      }
+
+      const r0 = { x: rect.minX, y: rect.minY };
+      const r1 = { x: rect.maxX, y: rect.minY };
+      const r2 = { x: rect.maxX, y: rect.maxY };
+      const r3 = { x: rect.minX, y: rect.maxY };
+      const edges = [[r0, r1], [r1, r2], [r2, r3], [r3, r0]];
+      const eps = 1e-6;
+
+      for (let i = 0; i < edges.length; i += 1) {
+        const hit = segmentIntersectionParams2D(seg.a, seg.b, edges[i][0], edges[i][1]);
+        if (!hit) {
+          continue;
+        }
+        if (hit.t >= -eps && hit.t <= 1 + eps && hit.u >= -eps && hit.u <= 1 + eps) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function collectSegmentsInMarquee(a, b) {
+      const rect = getRectFromWorldPoints(a, b);
+      const indices = [];
+      for (let i = 0; i < segments.length; i += 1) {
+        if (segmentIntersectsRect(segments[i], rect)) {
+          indices.push(i);
+        }
+      }
+      return indices;
     }
 
     function projectDoorEndpoint(start, pointer) {
@@ -501,6 +658,266 @@
       return bestIndex;
     }
 
+    function pushSegment(type, a, b) {
+      if (a.x === b.x && a.y === b.y) {
+        return;
+      }
+      segments.push({
+        a: { x: a.x, y: a.y },
+        b: { x: b.x, y: b.y },
+        type
+      });
+    }
+
+    function cutOverlappingWallSegments(newA, newB) {
+      const dir = { x: newB.x - newA.x, y: newB.y - newA.y };
+      const len = Math.hypot(dir.x, dir.y);
+      if (len < 1e-8) {
+        return;
+      }
+
+      const u = { x: dir.x / len, y: dir.y / len };
+      const eps = 1e-6;
+      const tol = 1e-4;
+
+      function relProj(p, base) {
+        return (p.x - base.x) * u.x + (p.y - base.y) * u.y;
+      }
+
+      function distToLine(p, base) {
+        const px = p.x - base.x;
+        const py = p.y - base.y;
+        const perp = Math.abs(px * (-u.y) + py * u.x);
+        return perp;
+      }
+
+      for (let i = segments.length - 1; i >= 0; i -= 1) {
+        const seg = segments[i];
+        if (seg.type !== "wall") {
+          continue;
+        }
+
+        const sdir = { x: seg.b.x - seg.a.x, y: seg.b.y - seg.a.y };
+        const slen = Math.hypot(sdir.x, sdir.y);
+        if (slen < 1e-8) {
+          continue;
+        }
+
+        const su = { x: sdir.x / slen, y: sdir.y / slen };
+        const parallel = Math.abs(u.x * su.x + u.y * su.y);
+        if (parallel < 0.999) {
+          continue;
+        }
+
+        if (distToLine(seg.a, newA) > tol || distToLine(seg.b, newA) > tol) {
+          continue;
+        }
+
+        const e0 = relProj(seg.a, newA);
+        const e1 = relProj(seg.b, newA);
+        const n0 = 0;
+        const n1 = len;
+
+        const eMin = Math.min(e0, e1);
+        const eMax = Math.max(e0, e1);
+        const oMin = Math.max(eMin, n0);
+        const oMax = Math.min(eMax, n1);
+
+        if (oMax - oMin <= eps) {
+          continue;
+        }
+
+        segments.splice(i, 1);
+
+        function pointAt(t) {
+          return { x: newA.x + u.x * t, y: newA.y + u.y * t };
+        }
+
+        if (oMin - eMin > eps) {
+          pushSegment("wall", pointAt(eMin), pointAt(oMin));
+        }
+        if (eMax - oMax > eps) {
+          pushSegment("wall", pointAt(oMax), pointAt(eMax));
+        }
+      }
+    }
+
+    function addWallSegmentWithCut(a, b) {
+      splitExistingSegmentsAtIntersections(a, b);
+      cutOverlappingWallSegments(a, b);
+      pushSegment("wall", a, b);
+    }
+
+    function segmentIntersectionParams2D(a0, a1, b0, b1) {
+      const eps = 1e-9;
+      const r = { x: a1.x - a0.x, y: a1.y - a0.y };
+      const s = { x: b1.x - b0.x, y: b1.y - b0.y };
+      const rxs = r.x * s.y - r.y * s.x;
+      if (Math.abs(rxs) < eps) {
+        return null;
+      }
+
+      const qp = { x: b0.x - a0.x, y: b0.y - a0.y };
+      const t = (qp.x * s.y - qp.y * s.x) / rxs;
+      const u = (qp.x * r.y - qp.y * r.x) / rxs;
+      return { t, u };
+    }
+
+    function splitExistingSegmentsAtIntersections(newA, newB) {
+      const eps = 1e-6;
+      const cuttable = new Set(["wall", "halfwall", "fakewall", "door"]);
+
+      for (let i = segments.length - 1; i >= 0; i -= 1) {
+        const seg = segments[i];
+        if (!cuttable.has(seg.type || "wall")) {
+          continue;
+        }
+
+        const hit = segmentIntersectionParams2D(newA, newB, seg.a, seg.b);
+        if (!hit) {
+          continue;
+        }
+
+        if (hit.t < -eps || hit.t > 1 + eps) {
+          continue;
+        }
+        // Split only if intersection lies strictly inside existing segment.
+        if (hit.u <= eps || hit.u >= 1 - eps) {
+          continue;
+        }
+
+        const ip = {
+          x: seg.a.x + (seg.b.x - seg.a.x) * hit.u,
+          y: seg.a.y + (seg.b.y - seg.a.y) * hit.u
+        };
+
+        segments.splice(i, 1);
+        pushSegment(seg.type || "wall", seg.a, ip);
+        pushSegment(seg.type || "wall", ip, seg.b);
+      }
+    }
+
+    function addSegmentWithCuts(type, a, b) {
+      splitExistingSegmentsAtIntersections(a, b);
+      pushSegment(type, a, b);
+    }
+
+    function projectPointToSegment2D(point, a, b) {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const lenSq = abx * abx + aby * aby;
+      if (lenSq < 1e-12) {
+        return { t: 0, x: a.x, y: a.y };
+      }
+      const t = ((point.x - a.x) * abx + (point.y - a.y) * aby) / lenSq;
+      return {
+        t,
+        x: a.x + abx * t,
+        y: a.y + aby * t
+      };
+    }
+
+    function carveDoorIntoWall(doorStart, doorEnd) {
+      const doorDir = { x: doorEnd.x - doorStart.x, y: doorEnd.y - doorStart.y };
+      const doorLen = Math.hypot(doorDir.x, doorDir.y);
+      if (doorLen < 1e-6) {
+        return null;
+      }
+
+      const doorDirN = { x: doorDir.x / doorLen, y: doorDir.y / doorLen };
+      const doorMid = { x: (doorStart.x + doorEnd.x) * 0.5, y: (doorStart.y + doorEnd.y) * 0.5 };
+
+      let best = null;
+
+      for (let i = 0; i < segments.length; i += 1) {
+        const seg = segments[i];
+        if (seg.type !== "wall") {
+          continue;
+        }
+
+        const wallDir = { x: seg.b.x - seg.a.x, y: seg.b.y - seg.a.y };
+        const wallLen = Math.hypot(wallDir.x, wallDir.y);
+        if (wallLen < 1e-6) {
+          continue;
+        }
+
+        const wallDirN = { x: wallDir.x / wallLen, y: wallDir.y / wallLen };
+        const parallel = Math.abs(doorDirN.x * wallDirN.x + doorDirN.y * wallDirN.y);
+        if (parallel < 0.98) {
+          continue;
+        }
+
+        const pm = projectPointToSegment2D(doorMid, seg.a, seg.b);
+        const distMid = Math.hypot(doorMid.x - pm.x, doorMid.y - pm.y);
+        if (distMid > 0.25) {
+          continue;
+        }
+
+        const p0 = projectPointToSegment2D(doorStart, seg.a, seg.b);
+        const p1 = projectPointToSegment2D(doorEnd, seg.a, seg.b);
+        let t0 = p0.t;
+        let t1 = p1.t;
+        if (t0 > t1) {
+          const tmp = t0;
+          t0 = t1;
+          t1 = tmp;
+        }
+
+        if (t1 <= 0.001 || t0 >= 0.999) {
+          continue;
+        }
+
+        const clampedT0 = Math.max(0, Math.min(1, t0));
+        const clampedT1 = Math.max(0, Math.min(1, t1));
+        if (clampedT1 - clampedT0 < 1e-4) {
+          continue;
+        }
+
+        if (!best || distMid < best.distMid) {
+          best = { index: i, seg, distMid, t0: clampedT0, t1: clampedT1 };
+        }
+      }
+
+      if (!best) {
+        return null;
+      }
+
+      const seg = best.seg;
+      const ab = { x: seg.b.x - seg.a.x, y: seg.b.y - seg.a.y };
+      const cutA = { x: seg.a.x + ab.x * best.t0, y: seg.a.y + ab.y * best.t0 };
+      const cutB = { x: seg.a.x + ab.x * best.t1, y: seg.a.y + ab.y * best.t1 };
+
+      segments.splice(best.index, 1);
+      pushSegment("wall", seg.a, cutA);
+      pushSegment("wall", cutB, seg.b);
+
+      return { a: cutA, b: cutB };
+    }
+
+    function splitSegmentAtPoint(segmentIndex, worldPoint) {
+      if (segmentIndex < 0 || segmentIndex >= segments.length) {
+        return false;
+      }
+
+      const seg = segments[segmentIndex];
+      const projection = projectPointToSegment2D(worldPoint, seg.a, seg.b);
+      const t = Math.max(0, Math.min(1, projection.t));
+      const eps = 1e-4;
+      if (t <= eps || t >= 1 - eps) {
+        return false;
+      }
+
+      const splitPoint = {
+        x: seg.a.x + (seg.b.x - seg.a.x) * t,
+        y: seg.a.y + (seg.b.y - seg.a.y) * t
+      };
+
+      segments.splice(segmentIndex, 1);
+      pushSegment(seg.type, seg.a, splitPoint);
+      pushSegment(seg.type, splitPoint, seg.b);
+      return true;
+    }
+
     function downloadBlob(blob, filename) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -510,6 +927,126 @@
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+    }
+
+    function serializeProject() {
+      return {
+        version: 1,
+        gridSizeUnits: GRID_SIZE_UNITS,
+        settings: {
+          thickness: getWallThickness(),
+          height: getWallHeight(),
+          joinMode: joinModeSelect.value
+        },
+        view: {
+          gridPx,
+          viewOffsetX,
+          viewOffsetY
+        },
+        segments: segments.map(seg => ({
+          a: { x: seg.a.x, y: seg.a.y },
+          b: { x: seg.b.x, y: seg.b.y },
+          type: seg.type || "wall"
+        }))
+      };
+    }
+
+    function applyProjectData(data) {
+      if (!data || !Array.isArray(data.segments)) {
+        throw new Error("Invalid plan file.");
+      }
+
+      const allowedTypes = new Set(["wall", "halfwall", "fakewall", "door"]);
+
+      segments.length = 0;
+      for (let i = 0; i < data.segments.length; i += 1) {
+        const seg = data.segments[i];
+        if (!seg || !seg.a || !seg.b) {
+          continue;
+        }
+
+        const ax = Number(seg.a.x);
+        const ay = Number(seg.a.y);
+        const bx = Number(seg.b.x);
+        const by = Number(seg.b.y);
+        if (![ax, ay, bx, by].every(Number.isFinite)) {
+          continue;
+        }
+
+        const type = allowedTypes.has(seg.type) ? seg.type : "wall";
+        if (ax === bx && ay === by) {
+          continue;
+        }
+
+        segments.push({
+          a: { x: ax, y: ay },
+          b: { x: bx, y: by },
+          type
+        });
+      }
+
+      if (data.settings) {
+        if (Number.isFinite(Number(data.settings.thickness))) {
+          thicknessInput.value = String(data.settings.thickness);
+        }
+        if (Number.isFinite(Number(data.settings.height))) {
+          heightInput.value = String(data.settings.height);
+        }
+        if (data.settings.joinMode === "miter" || data.settings.joinMode === "bevel") {
+          joinModeSelect.value = data.settings.joinMode;
+        }
+      }
+
+      if (data.view) {
+        if (Number.isFinite(Number(data.view.gridPx))) {
+          gridPx = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, Number(data.view.gridPx)));
+        }
+        if (Number.isFinite(Number(data.view.viewOffsetX))) {
+          viewOffsetX = Number(data.view.viewOffsetX);
+        }
+        if (Number.isFinite(Number(data.view.viewOffsetY))) {
+          viewOffsetY = Number(data.view.viewOffsetY);
+        }
+      }
+
+      selectedSegmentIndices.clear();
+      isMarqueeSelecting = false;
+      marqueeStartWorld = null;
+      marqueeEndWorld = null;
+      marqueeMode = "replace";
+      dragState = null;
+      drawing = false;
+      startGrid = null;
+      pointerGrid = null;
+    }
+
+    function saveProject() {
+      const data = serializeProject();
+      const text = JSON.stringify(data, null, 2);
+      const blob = new Blob([text], { type: "application/json" });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadBlob(blob, `floor-plan-${timestamp}.json`);
+      status.textContent = "Plan saved.";
+    }
+
+    function loadProjectFromFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const raw = String(reader.result || "");
+          const data = JSON.parse(raw);
+          applyProjectData(data);
+          status.textContent = `Plan loaded. Segments: ${segments.length}`;
+          redraw();
+        } catch (error) {
+          console.error(error);
+          status.textContent = "Failed to load plan file.";
+        }
+      };
+      reader.onerror = () => {
+        status.textContent = "Failed to read plan file.";
+      };
+      reader.readAsText(file);
     }
 
     function vec2(x, z) {
@@ -1174,6 +1711,10 @@
         let baseY = 0;
         let topY = height;
 
+        if (segType === "fakewall") {
+          continue;
+        }
+
         if (segType === "door") {
           baseY = Math.min(DOOR_HEAD_HEIGHT_UNITS, height);
         } else if (segType === "halfwall") {
@@ -1218,7 +1759,7 @@
         }
       }
 
-      const closureSegments = worldSegments.filter(seg => (seg.type || "wall") !== "halfwall");
+      const closureSegments = worldSegments.filter(seg => (seg.type || "wall") !== "halfwall" && (seg.type || "wall") !== "door");
       const sealedFaces = extractBoundedFacesFromSegments(closureSegments);
       for (let i = 0; i < sealedFaces.length; i += 1) {
         const poly = sealedFaces[i];
@@ -1425,34 +1966,75 @@
 
       const p = getPointerPosition(event);
       pointerGrid = canvasToGrid(p.x, p.y);
+      const pointerWorld = canvasToWorld(p.x, p.y);
 
       if (activeTool === "select") {
-        selectedSegmentIndex = findNearestSegmentIndex(pointerGrid, () => true);
-        if (selectedSegmentIndex >= 0) {
-          const seg = segments[selectedSegmentIndex];
+        const hitIndex = findNearestSegmentIndex(pointerGrid, () => true);
+        const addMode = event.shiftKey;
+        const removeMode = event.ctrlKey;
+
+        if (hitIndex >= 0 && !addMode && !removeMode) {
+          if (!selectedSegmentIndices.has(hitIndex)) {
+            selectedSegmentIndices.clear();
+            selectedSegmentIndices.add(hitIndex);
+          }
+
+          const selected = Array.from(selectedSegmentIndices);
           dragState = {
-            index: selectedSegmentIndex,
+            indices: selected,
             startPointer: clonePoint(pointerGrid),
-            startA: clonePoint(seg.a),
-            startB: clonePoint(seg.b)
+            originals: selected.map(idx => ({
+              index: idx,
+              a: clonePoint(segments[idx].a),
+              b: clonePoint(segments[idx].b)
+            }))
           };
-          status.textContent = `Selected ${seg.type === "door" ? "door" : "wall"}. Drag to move.`;
-        } else {
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s). Drag to move.`;
+        } else if (hitIndex >= 0 && (addMode || removeMode)) {
+          if (addMode) {
+            selectedSegmentIndices.add(hitIndex);
+          }
+          if (removeMode) {
+            selectedSegmentIndices.delete(hitIndex);
+          }
           dragState = null;
-          status.textContent = "No segment selected.";
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
+        } else {
+          if (!addMode && !removeMode) {
+            selectedSegmentIndices.clear();
+          }
+          isMarqueeSelecting = true;
+          marqueeStartWorld = clonePoint(pointerWorld);
+          marqueeEndWorld = clonePoint(pointerWorld);
+          marqueeMode = addMode ? "add" : removeMode ? "remove" : "replace";
+          dragState = null;
+          status.textContent = "Drag to marquee-select lines.";
         }
         redraw();
         return;
       }
 
       if (activeTool === "erase") {
-        const index = findNearestSegmentIndex(pointerGrid, seg => seg.type !== "door");
-        if (index >= 0) {
-          segments.splice(index, 1);
-          selectedSegmentIndex = -1;
+        isErasingDrag = true;
+        if (eraseAtPoint(pointerGrid)) {
           status.textContent = "Wall removed.";
         } else {
-          status.textContent = "No wall found under cursor.";
+          status.textContent = "No line found under cursor.";
+        }
+        redraw();
+        return;
+      }
+
+      if (activeTool === "cut") {
+        const index = findNearestSegmentIndex(pointerWorld, seg => seg.type === "wall" || seg.type === "halfwall" || seg.type === "fakewall");
+        if (index >= 0) {
+          if (splitSegmentAtPoint(index, pointerWorld)) {
+            status.textContent = "Segment cut into two parts.";
+          } else {
+            status.textContent = "Click away from endpoints to cut.";
+          }
+        } else {
+          status.textContent = "No cuttable segment found under cursor.";
         }
         redraw();
         return;
@@ -1478,15 +2060,37 @@
       }
 
       pointerGrid = canvasToGrid(p.x, p.y);
+      const pointerWorld = canvasToWorld(p.x, p.y);
+
+      if (activeTool === "erase" && isErasingDrag) {
+        if (eraseAtPoint(pointerGrid)) {
+          status.textContent = "Line removed.";
+        }
+        redraw();
+        return;
+      }
+
+      if (activeTool === "select" && isMarqueeSelecting) {
+        marqueeEndWorld = clonePoint(pointerWorld);
+        redraw();
+        return;
+      }
 
       if (activeTool === "select" && dragState) {
         const dx = pointerGrid.x - dragState.startPointer.x;
         const dy = pointerGrid.y - dragState.startPointer.y;
-        const seg = segments[dragState.index];
-        seg.a.x = dragState.startA.x + dx;
-        seg.a.y = dragState.startA.y + dy;
-        seg.b.x = dragState.startB.x + dx;
-        seg.b.y = dragState.startB.y + dy;
+
+        for (let i = 0; i < dragState.originals.length; i += 1) {
+          const original = dragState.originals[i];
+          const seg = segments[original.index];
+          if (!seg) {
+            continue;
+          }
+          seg.a.x = original.a.x + dx;
+          seg.a.y = original.a.y + dy;
+          seg.b.x = original.b.x + dx;
+          seg.b.y = original.b.y + dy;
+        }
       }
 
       redraw();
@@ -1499,20 +2103,51 @@
         return;
       }
 
+      if (event.button === 0) {
+        isErasingDrag = false;
+      }
+
       if (event.button !== 0) {
         return;
       }
 
       if (activeTool === "select") {
-        if (dragState) {
-          status.textContent = "Segment moved.";
+        if (isMarqueeSelecting && marqueeStartWorld && marqueeEndWorld) {
+          const hits = collectSegmentsInMarquee(marqueeStartWorld, marqueeEndWorld);
+
+          if (marqueeMode === "replace") {
+            selectedSegmentIndices.clear();
+          }
+
+          if (marqueeMode === "add" || marqueeMode === "replace") {
+            for (let i = 0; i < hits.length; i += 1) {
+              selectedSegmentIndices.add(hits[i]);
+            }
+          } else if (marqueeMode === "remove") {
+            for (let i = 0; i < hits.length; i += 1) {
+              selectedSegmentIndices.delete(hits[i]);
+            }
+          }
+
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
+        } else if (dragState) {
+          status.textContent = `Moved ${selectedSegmentIndices.size} line(s).`;
         }
+
+        isMarqueeSelecting = false;
+        marqueeStartWorld = null;
+        marqueeEndWorld = null;
+        marqueeMode = "replace";
         dragState = null;
         redraw();
         return;
       }
 
       if (activeTool === "erase") {
+        return;
+      }
+
+      if (activeTool === "cut") {
         return;
       }
 
@@ -1525,25 +2160,35 @@
 
       if (activeTool === "door") {
         const doorEnd = projectDoorEndpoint(startGrid, endGrid);
-        segments.push({
-          a: { x: startGrid.x, y: startGrid.y },
-          b: { x: doorEnd.x, y: doorEnd.y },
-          type: "door"
-        });
+        const carved = carveDoorIntoWall(startGrid, doorEnd);
+        const doorA = carved ? carved.a : { x: startGrid.x, y: startGrid.y };
+        const doorB = carved ? carved.b : { x: doorEnd.x, y: doorEnd.y };
+        addSegmentWithCuts("door", doorA, doorB);
         status.textContent = `Door added (width ${DOOR_WIDTH_UNITS}). Total segments: ${segments.length}`;
+      } else if (activeTool === "box") {
+        const minX = Math.min(startGrid.x, endGrid.x);
+        const maxX = Math.max(startGrid.x, endGrid.x);
+        const minY = Math.min(startGrid.y, endGrid.y);
+        const maxY = Math.max(startGrid.y, endGrid.y);
+
+        const p0 = { x: minX, y: minY };
+        const p1 = { x: maxX, y: minY };
+        const p2 = { x: maxX, y: maxY };
+        const p3 = { x: minX, y: maxY };
+
+        addWallSegmentWithCut(p0, p1);
+        addWallSegmentWithCut(p1, p2);
+        addWallSegmentWithCut(p2, p3);
+        addWallSegmentWithCut(p3, p0);
+        status.textContent = `Box added. Total segments: ${segments.length}`;
       } else if (activeTool === "halfwall" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
-        segments.push({
-          a: { x: startGrid.x, y: startGrid.y },
-          b: { x: endGrid.x, y: endGrid.y },
-          type: "halfwall"
-        });
+        addSegmentWithCuts("halfwall", startGrid, endGrid);
         status.textContent = `Half wall added. Total segments: ${segments.length}`;
+      } else if (activeTool === "fakewall" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
+        addSegmentWithCuts("fakewall", startGrid, endGrid);
+        status.textContent = `Fake wall added. Total segments: ${segments.length}`;
       } else if (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y) {
-        segments.push({
-          a: { x: startGrid.x, y: startGrid.y },
-          b: { x: endGrid.x, y: endGrid.y },
-          type: "wall"
-        });
+        addWallSegmentWithCut(startGrid, endGrid);
         status.textContent = `Wall added. Total segments: ${segments.length}`;
       }
 
@@ -1554,8 +2199,13 @@
 
     canvas.addEventListener("mouseleave", () => {
       isPanning = false;
+      isErasingDrag = false;
       panLastPointer = null;
       if (activeTool === "select") {
+        isMarqueeSelecting = false;
+        marqueeStartWorld = null;
+        marqueeEndWorld = null;
+        marqueeMode = "replace";
         dragState = null;
       }
       pointerGrid = null;
@@ -1575,6 +2225,26 @@
       setCanvasZoomAtPoint(gridPx * zoomFactor, p.x, p.y);
     }, { passive: false });
 
+    window.addEventListener("keydown", event => {
+      const target = event.target;
+      const tag = target && target.tagName ? target.tagName.toLowerCase() : "";
+      if (tag === "input" || tag === "textarea" || tag === "select" || (target && target.isContentEditable)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "w") {
+        event.preventDefault();
+        cycleToolGroup(["wall", "halfwall", "fakewall", "box"], "W group");
+      } else if (key === "s") {
+        event.preventDefault();
+        cycleToolGroup(["select", "erase"], "S group");
+      } else if (key === "d") {
+        event.preventDefault();
+        cycleToolGroup(["door", "cut"], "D group");
+      }
+    });
+
     undoButton.addEventListener("click", () => {
       if (segments.length > 0) {
         segments.pop();
@@ -1585,15 +2255,38 @@
 
     clearButton.addEventListener("click", () => {
       segments.length = 0;
-      selectedSegmentIndex = -1;
+      selectedSegmentIndices.clear();
+      isMarqueeSelecting = false;
+      marqueeStartWorld = null;
+      marqueeEndWorld = null;
+      marqueeMode = "replace";
       dragState = null;
       status.textContent = "Plan cleared.";
       redraw();
     });
 
+    saveButton.addEventListener("click", () => {
+      saveProject();
+    });
+
+    loadButton.addEventListener("click", () => {
+      loadInput.value = "";
+      loadInput.click();
+    });
+
+    loadInput.addEventListener("change", () => {
+      if (!loadInput.files || loadInput.files.length === 0) {
+        return;
+      }
+      loadProjectFromFile(loadInput.files[0]);
+    });
+
     toolWallButton.addEventListener("click", () => setTool("wall"));
+    toolBoxButton.addEventListener("click", () => setTool("box"));
     toolHalfWallButton.addEventListener("click", () => setTool("halfwall"));
+    toolFakeWallButton.addEventListener("click", () => setTool("fakewall"));
     toolDoorButton.addEventListener("click", () => setTool("door"));
+    toolCutButton.addEventListener("click", () => setTool("cut"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 
