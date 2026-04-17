@@ -221,8 +221,8 @@
 
   <script>
     const GRID_SIZE_UNITS = 0.25;
-    const DEFAULT_GRID_PX = 16;
-    const MIN_GRID_PX = 10;
+    const DEFAULT_GRID_PX = 12;
+    const MIN_GRID_PX = 2;
     const MAX_GRID_PX = 36;
     let gridPx = DEFAULT_GRID_PX;
     const DOOR_WIDTH_UNITS = 1;
@@ -1014,10 +1014,31 @@
           other = node.dirs[1];
         }
 
-        // Keep orthogonal corners square: avoid diagonal miter merge near 90 degrees.
+        // For orthogonal corners, extend only one wall deterministically and let the
+        // other butt into it. This avoids diagonal corner merges while still covering
+        // the intersection area.
         const cornerDot = vec2Dot(outDir, other);
         if (Math.abs(cornerDot) < 0.12) {
-          return vec2Scale(normal, half);
+          const preferThisWall = Math.abs(outDir.x) >= Math.abs(outDir.z);
+          if (!preferThisWall) {
+            return vec2Scale(normal, half);
+          }
+
+          const otherBase = vec2PerpLeft(other);
+          const otherNormal = sideSign > 0 ? otherBase : vec2Scale(otherBase, -1);
+          const baseOffset = vec2Scale(normal, half);
+          const denom = vec2Dot(outDir, otherNormal);
+          if (Math.abs(denom) < 1e-6) {
+            return baseOffset;
+          }
+
+          const t = (half - vec2Dot(baseOffset, otherNormal)) / denom;
+          const clampedT = Math.max(-half * 4, Math.min(half * 4, t));
+          const extended = vec2Add(baseOffset, vec2Scale(outDir, clampedT));
+          if (vec2Dot(extended, normal) <= 0) {
+            return baseOffset;
+          }
+          return extended;
         }
 
         const otherBase = vec2PerpLeft(other);
