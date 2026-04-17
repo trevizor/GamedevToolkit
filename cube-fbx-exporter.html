@@ -163,6 +163,84 @@
       background: #fdfefe;
     }
 
+    .editor-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 240px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .editor-main {
+      min-width: 0;
+    }
+
+    .floors-panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 700px;
+    }
+
+    .floors-header {
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #33507a;
+    }
+
+    .floors-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .floors-actions button {
+      padding: 8px 10px;
+      font-size: 0.82rem;
+      border-radius: 8px;
+    }
+
+    .floors-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .floor-item {
+      border: 1px solid #cfdcf0;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #27456f;
+      padding: 8px 10px;
+      font-size: 0.88rem;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .floor-item.active {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #143b66;
+      font-weight: 700;
+    }
+
+    @media (max-width: 1080px) {
+      .editor-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .floors-panel {
+        max-height: none;
+      }
+    }
+
     .zoom-bar {
       margin-top: 10px;
       border: 1px solid var(--border);
@@ -247,17 +325,32 @@
       <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
     </div>
 
-    <div class="canvas-wrap">
-      <canvas id="planCanvas" width="920" height="560"></canvas>
-    </div>
+    <div class="editor-layout">
+      <div class="editor-main">
+        <div class="canvas-wrap">
+          <canvas id="planCanvas" width="920" height="560"></canvas>
+        </div>
 
-    <div class="zoom-bar" aria-label="Canvas zoom controls">
-      <span class="label">Canvas Zoom</span>
-      <button id="zoomOutBtn" type="button" class="secondary">-</button>
-      <button id="zoomInBtn" type="button" class="secondary">+</button>
-      <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
-      <span id="zoomReadout" class="zoom-readout">100%</span>
-      <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
+        <div class="zoom-bar" aria-label="Canvas zoom controls">
+          <span class="label">Canvas Zoom</span>
+          <button id="zoomOutBtn" type="button" class="secondary">-</button>
+          <button id="zoomInBtn" type="button" class="secondary">+</button>
+          <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
+          <span id="zoomReadout" class="zoom-readout">100%</span>
+          <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
+        </div>
+      </div>
+
+      <aside class="floors-panel" aria-label="Level controls">
+        <div class="floors-header">Levels</div>
+        <div class="floors-actions">
+          <button id="floorAddAboveBtn" type="button" class="secondary">+ Level</button>
+          <button id="floorMoveUpBtn" type="button" class="secondary">Move Up</button>
+          <button id="floorMoveDownBtn" type="button" class="secondary">Move Down</button>
+          <button id="floorRemoveBtn" type="button" class="secondary">Remove</button>
+        </div>
+        <div id="floorsList" class="floors-list"></div>
+      </aside>
     </div>
 
     <div id="status" aria-live="polite"></div>
@@ -295,6 +388,11 @@
     const zoomOutButton = document.getElementById("zoomOutBtn");
     const zoomInButton = document.getElementById("zoomInBtn");
     const zoomResetButton = document.getElementById("zoomResetBtn");
+    const floorAddAboveButton = document.getElementById("floorAddAboveBtn");
+    const floorMoveUpButton = document.getElementById("floorMoveUpBtn");
+    const floorMoveDownButton = document.getElementById("floorMoveDownBtn");
+    const floorRemoveButton = document.getElementById("floorRemoveBtn");
+    const floorsList = document.getElementById("floorsList");
     const zoomReadout = document.getElementById("zoomReadout");
     const thicknessInput = document.getElementById("thicknessInput");
     const heightInput = document.getElementById("heightInput");
@@ -308,7 +406,16 @@
     const canvas = document.getElementById("planCanvas");
     const ctx = canvas.getContext("2d");
 
-    const segments = [];
+    function createFloor(name, floorSegments) {
+      return {
+        name,
+        segments: Array.isArray(floorSegments) ? floorSegments : []
+      };
+    }
+
+    const floors = [createFloor("Level 1", [])];
+    let currentFloorIndex = 0;
+    let segments = floors[currentFloorIndex].segments;
     const LOCAL_PLAN_STORAGE_KEY = "floor-plan-editor.autosave.v1";
     const LOCAL_HISTORY_STORAGE_KEY = "floor-plan-editor.autosave.history.v1";
     const LOCAL_PLAN_SAVE_DELAY_MS = 250;
@@ -331,6 +438,92 @@
     let undoSnapshot = null;
     let redoSnapshot = null;
     let isExportPropsOpen = false;
+
+    function getCurrentFloor() {
+      return floors[currentFloorIndex];
+    }
+
+    function setCurrentFloorIndex(nextIndex) {
+      const clamped = Math.max(0, Math.min(floors.length - 1, nextIndex));
+      currentFloorIndex = clamped;
+      segments = floors[currentFloorIndex].segments;
+      selectedSegmentIndices.clear();
+      isMarqueeSelecting = false;
+      marqueeStartWorld = null;
+      marqueeEndWorld = null;
+      marqueeMode = "replace";
+      dragState = null;
+      renderFloorList();
+      queueLocalAutosave();
+      redraw();
+    }
+
+    function buildFloorDefaultName(index) {
+      return `Level ${index + 1}`;
+    }
+
+    function rebuildFloorNamesIfDefault() {
+      for (let i = 0; i < floors.length; i += 1) {
+        const defaultLike = /^(Floor|Level)\s+\d+$/i.test(floors[i].name || "");
+        if (defaultLike || !floors[i].name) {
+          floors[i].name = buildFloorDefaultName(i);
+        }
+      }
+    }
+
+    function renderFloorList() {
+      floorsList.innerHTML = "";
+      for (let i = floors.length - 1; i >= 0; i -= 1) {
+        const floor = floors[i];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `floor-item${i === currentFloorIndex ? " active" : ""}`;
+        button.textContent = `${floor.name} (${floor.segments.length})`;
+        button.addEventListener("click", () => {
+          setCurrentFloorIndex(i);
+          status.textContent = `Switched to ${floor.name}.`;
+        });
+        floorsList.appendChild(button);
+      }
+      floorRemoveButton.disabled = floors.length <= 1;
+      floorMoveUpButton.disabled = floors.length <= 1 || currentFloorIndex <= 0;
+      floorMoveDownButton.disabled = floors.length <= 1 || currentFloorIndex >= floors.length - 1;
+    }
+
+    function addFloor() {
+      const insertAt = floors.length;
+      const newFloor = createFloor("", []);
+      floors.splice(insertAt, 0, newFloor);
+      rebuildFloorNamesIfDefault();
+      setCurrentFloorIndex(insertAt);
+      status.textContent = `${newFloor.name} created.`;
+    }
+
+    function removeCurrentFloor() {
+      if (floors.length <= 1) {
+        return;
+      }
+      const removedName = floors[currentFloorIndex].name;
+      floors.splice(currentFloorIndex, 1);
+      rebuildFloorNamesIfDefault();
+      setCurrentFloorIndex(Math.min(currentFloorIndex, floors.length - 1));
+      status.textContent = `${removedName} removed.`;
+    }
+
+    function moveCurrentFloor(direction) {
+      const targetIndex = currentFloorIndex + direction;
+      if (targetIndex < 0 || targetIndex >= floors.length) {
+        return;
+      }
+
+      const floor = floors[currentFloorIndex];
+      floors.splice(currentFloorIndex, 1);
+      floors.splice(targetIndex, 0, floor);
+
+      rebuildFloorNamesIfDefault();
+      setCurrentFloorIndex(targetIndex);
+      status.textContent = `${floor.name} moved ${direction < 0 ? "up" : "down"}.`;
+    }
 
     const toolButtons = {
       wall: toolWallButton,
@@ -497,27 +690,58 @@
       ctx.restore();
     }
 
-    function drawSegments() {
-      segments.forEach((seg, i) => {
-        ctx.lineWidth = selectedSegmentIndices.has(i) ? 4 : 3;
-        if (seg.type === "door") {
-          ctx.strokeStyle = "#d97706";
-        } else if (seg.type === "window") {
-          ctx.strokeStyle = "#0891b2";
-        } else if (seg.type === "halfwall") {
-          ctx.strokeStyle = "#0e7490";
-        } else if (seg.type === "fakewall") {
-          ctx.strokeStyle = "#cbd5e1";
-        } else {
-          ctx.strokeStyle = "#0f1722";
-        }
+    function getSegmentColor(seg) {
+      if (seg.type === "door") {
+        return "#d97706";
+      }
+      if (seg.type === "window") {
+        return "#0891b2";
+      }
+      if (seg.type === "halfwall") {
+        return "#0e7490";
+      }
+      if (seg.type === "fakewall") {
+        return "#cbd5e1";
+      }
+      return "#0f1722";
+    }
+
+    function drawFloorSegments(floorSegments, options) {
+      const alpha = options && Number.isFinite(options.alpha) ? options.alpha : 1;
+      const tintColor = options && options.tintColor ? options.tintColor : null;
+      const isCurrent = !!(options && options.isCurrent);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      for (let i = 0; i < floorSegments.length; i += 1) {
+        const seg = floorSegments[i];
+        ctx.lineWidth = isCurrent && selectedSegmentIndices.has(i) ? 4 : 3;
+        ctx.strokeStyle = tintColor || getSegmentColor(seg);
         const a = gridToCanvas(seg.a);
         const b = gridToCanvas(seg.b);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-      });
+      }
+
+      ctx.restore();
+    }
+
+    function drawSegments() {
+      const below = floors[currentFloorIndex - 1];
+      const above = floors[currentFloorIndex + 1];
+
+      if (below) {
+        drawFloorSegments(below.segments, { alpha: 0.8, tintColor: "#dbeafe", isCurrent: false });
+      }
+
+      drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
+
+      if (above) {
+        drawFloorSegments(above.segments, { alpha: 0.7, tintColor: "#60a5fa", isCurrent: false });
+      }
     }
 
     function drawPreview() {
@@ -634,7 +858,7 @@
       const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
       const windowCount = segments.filter(seg => seg.type === "window").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount}`;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentFloorIndex + 1}/${floors.length} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -1352,8 +1576,17 @@
     }
 
     function serializeProject() {
+      const serializedFloors = floors.map((floor, index) => ({
+        name: floor.name || buildFloorDefaultName(index),
+        segments: floor.segments.map(seg => ({
+          a: { x: seg.a.x, y: seg.a.y },
+          b: { x: seg.b.x, y: seg.b.y },
+          type: seg.type || "wall"
+        }))
+      }));
+
       return {
-        version: 1,
+        version: 2,
         gridSizeUnits: GRID_SIZE_UNITS,
         settings: {
           thickness: getWallThickness(),
@@ -1367,11 +1600,10 @@
           viewOffsetX,
           viewOffsetY
         },
-        segments: segments.map(seg => ({
-          a: { x: seg.a.x, y: seg.a.y },
-          b: { x: seg.b.x, y: seg.b.y },
-          type: seg.type || "wall"
-        }))
+        currentFloorIndex,
+        floors: serializedFloors,
+        // Kept for backwards compatibility with older workflows that read only top-level segments.
+        segments: serializedFloors[0] ? serializedFloors[0].segments : []
       };
     }
 
@@ -1413,38 +1645,74 @@
     }
 
     function applyProjectData(data) {
-      if (!data || !Array.isArray(data.segments)) {
+      if (!data) {
         throw new Error("Invalid plan file.");
       }
 
       const allowedTypes = new Set(["wall", "halfwall", "fakewall", "door", "window"]);
-
-      segments.length = 0;
-      for (let i = 0; i < data.segments.length; i += 1) {
-        const seg = data.segments[i];
-        if (!seg || !seg.a || !seg.b) {
-          continue;
+      const sanitizeSegments = rawSegments => {
+        const out = [];
+        if (!Array.isArray(rawSegments)) {
+          return out;
         }
+        for (let i = 0; i < rawSegments.length; i += 1) {
+          const seg = rawSegments[i];
+          if (!seg || !seg.a || !seg.b) {
+            continue;
+          }
 
-        const ax = Number(seg.a.x);
-        const ay = Number(seg.a.y);
-        const bx = Number(seg.b.x);
-        const by = Number(seg.b.y);
-        if (![ax, ay, bx, by].every(Number.isFinite)) {
-          continue;
+          const ax = Number(seg.a.x);
+          const ay = Number(seg.a.y);
+          const bx = Number(seg.b.x);
+          const by = Number(seg.b.y);
+          if (![ax, ay, bx, by].every(Number.isFinite)) {
+            continue;
+          }
+
+          const type = allowedTypes.has(seg.type) ? seg.type : "wall";
+          if (ax === bx && ay === by) {
+            continue;
+          }
+
+          out.push({
+            a: { x: ax, y: ay },
+            b: { x: bx, y: by },
+            type
+          });
         }
+        return out;
+      };
 
-        const type = allowedTypes.has(seg.type) ? seg.type : "wall";
-        if (ax === bx && ay === by) {
-          continue;
-        }
+      let loadedFloors = [];
 
-        segments.push({
-          a: { x: ax, y: ay },
-          b: { x: bx, y: by },
-          type
-        });
+      if (Array.isArray(data.floors) && data.floors.length > 0) {
+        loadedFloors = data.floors.map((floor, index) => createFloor(
+          floor && typeof floor.name === "string" && floor.name.trim()
+            ? floor.name.trim()
+            : buildFloorDefaultName(index),
+          sanitizeSegments(floor ? floor.segments : [])
+        ));
+      } else if (Array.isArray(data.segments)) {
+        loadedFloors = [createFloor("Level 1", sanitizeSegments(data.segments))];
+      } else {
+        throw new Error("Invalid plan file.");
       }
+
+      if (loadedFloors.length === 0) {
+        loadedFloors = [createFloor("Level 1", [])];
+      }
+
+      floors.length = 0;
+      for (let i = 0; i < loadedFloors.length; i += 1) {
+        floors.push(loadedFloors[i]);
+      }
+      rebuildFloorNamesIfDefault();
+
+      const preferredFloorIndex = Number.isInteger(data.currentFloorIndex)
+        ? data.currentFloorIndex
+        : 0;
+      currentFloorIndex = Math.max(0, Math.min(floors.length - 1, preferredFloorIndex));
+      segments = floors[currentFloorIndex].segments;
 
       if (data.settings) {
         if (Number.isFinite(Number(data.settings.thickness))) {
@@ -1485,6 +1753,7 @@
       drawing = false;
       startGrid = null;
       pointerGrid = null;
+      renderFloorList();
     }
 
     function saveProject() {
@@ -1899,11 +2168,12 @@
       return tris;
     }
 
-    function buildWallMeshData() {
-      const mesh = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
-      if (segments.length === 0) {
+    function buildWallMeshData(sourceSegments, floorBaseY, meshName) {
+      const mesh = { name: meshName || "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
+      if (!Array.isArray(sourceSegments) || sourceSegments.length === 0) {
         return mesh;
       }
+      floorBaseY = Number.isFinite(floorBaseY) ? floorBaseY : 0;
 
       const thickness = getWallThickness();
       const slabThickness = thickness * 0.5;
@@ -1928,8 +2198,8 @@
         return nodes.get(key);
       }
 
-      for (let i = 0; i < segments.length; i += 1) {
-        const raw = segments[i];
+      for (let i = 0; i < sourceSegments.length; i += 1) {
+        const raw = sourceSegments[i];
         const a = vec2(raw.a.x * GRID_SIZE_UNITS, raw.a.y * GRID_SIZE_UNITS);
         const b = vec2(raw.b.x * GRID_SIZE_UNITS, raw.b.y * GRID_SIZE_UNITS);
         const delta = vec2Sub(b, a);
@@ -2135,13 +2405,13 @@
           const p1 = tri[1];
           const p2 = tri[2];
 
-          const b0 = [p0.x, baseY, p0.z];
-          const b1 = [p1.x, baseY, p1.z];
-          const b2 = [p2.x, baseY, p2.z];
+          const b0 = [p0.x, baseY + floorBaseY, p0.z];
+          const b1 = [p1.x, baseY + floorBaseY, p1.z];
+          const b2 = [p2.x, baseY + floorBaseY, p2.z];
 
-          const t0 = [p0.x, baseY + thicknessY, p0.z];
-          const t1 = [p1.x, baseY + thicknessY, p1.z];
-          const t2 = [p2.x, baseY + thicknessY, p2.z];
+          const t0 = [p0.x, baseY + thicknessY + floorBaseY, p0.z];
+          const t1 = [p1.x, baseY + thicknessY + floorBaseY, p1.z];
+          const t2 = [p2.x, baseY + thicknessY + floorBaseY, p2.z];
 
           addOrientedTri(t0, t1, t2, [0, 1, 0], group);
           addOrientedTri(b0, b1, b2, [0, -1, 0], group);
@@ -2160,10 +2430,10 @@
           const a = poly[i];
           const b = poly[(i + 1) % poly.length];
 
-          const bottomA = [a.x, baseY, a.z];
-          const bottomB = [b.x, baseY, b.z];
-          const topA = [a.x, baseY + thicknessY, a.z];
-          const topB = [b.x, baseY + thicknessY, b.z];
+          const bottomA = [a.x, baseY + floorBaseY, a.z];
+          const bottomB = [b.x, baseY + floorBaseY, b.z];
+          const topA = [a.x, baseY + thicknessY + floorBaseY, a.z];
+          const topB = [b.x, baseY + thicknessY + floorBaseY, b.z];
 
           const mx = (a.x + b.x) / 2;
           const mz = (a.z + b.z) / 2;
@@ -2186,14 +2456,14 @@
         const eLeft = vec2Add(seg.b, computeJoinOffset(endNode, endOut, -1));
         const eRight = vec2Add(seg.b, computeJoinOffset(endNode, endOut, 1));
 
-        const v0 = [sLeft.x, baseY, sLeft.z];
-        const v1 = [sRight.x, baseY, sRight.z];
-        const v2 = [eRight.x, baseY, eRight.z];
-        const v3 = [eLeft.x, baseY, eLeft.z];
-        const v4 = [sLeft.x, topY, sLeft.z];
-        const v5 = [sRight.x, topY, sRight.z];
-        const v6 = [eRight.x, topY, eRight.z];
-        const v7 = [eLeft.x, topY, eLeft.z];
+        const v0 = [sLeft.x, baseY + floorBaseY, sLeft.z];
+        const v1 = [sRight.x, baseY + floorBaseY, sRight.z];
+        const v2 = [eRight.x, baseY + floorBaseY, eRight.z];
+        const v3 = [eLeft.x, baseY + floorBaseY, eLeft.z];
+        const v4 = [sLeft.x, topY + floorBaseY, sLeft.z];
+        const v5 = [sRight.x, topY + floorBaseY, sRight.z];
+        const v6 = [eRight.x, topY + floorBaseY, eRight.z];
+        const v7 = [eLeft.x, topY + floorBaseY, eLeft.z];
 
         const leftN = vec2PerpLeft(seg.dir);
         const rightN = vec2Scale(leftN, -1);
@@ -2418,7 +2688,8 @@
     }
 
     function exportWallsAsGlb() {
-      if (segments.length === 0) {
+      const hasAnySegments = floors.some(floor => floor.segments.length > 0);
+      if (!hasAnySegments) {
         status.textContent = "Draw at least one line before exporting.";
         return;
       }
@@ -2426,7 +2697,44 @@
       status.textContent = "Building wall geometry and exporting GLB...";
 
       try {
-        const meshData = buildWallMeshData();
+        const floorStride = getWallHeight() + getWallThickness() * 0.5;
+        const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
+
+        for (let i = 0; i < floors.length; i += 1) {
+          const floor = floors[i];
+          if (!floor.segments || floor.segments.length === 0) {
+            continue;
+          }
+
+          const floorMesh = buildWallMeshData(
+            floor.segments,
+            i * floorStride,
+            floor.name || buildFloorDefaultName(i)
+          );
+
+          if (floorMesh.vertices.length === 0 || floorMesh.faces.length === 0) {
+            continue;
+          }
+
+          const vertexOffset = meshData.vertices.length;
+          for (let v = 0; v < floorMesh.vertices.length; v += 1) {
+            meshData.vertices.push(floorMesh.vertices[v]);
+          }
+          for (let f = 0; f < floorMesh.faces.length; f += 1) {
+            const face = floorMesh.faces[f];
+            meshData.faces.push([
+              face[0] + vertexOffset,
+              face[1] + vertexOffset,
+              face[2] + vertexOffset
+            ]);
+            meshData.faceGroups.push(
+              floorMesh.faceGroups && floorMesh.faceGroups[f]
+                ? floorMesh.faceGroups[f]
+                : "walls"
+            );
+          }
+        }
+
         if (meshData.vertices.length === 0 || meshData.faces.length === 0) {
           status.textContent = "No geometry generated. Check wall settings and plan lines.";
           return;
@@ -2886,6 +3194,22 @@
     zoomInButton.addEventListener("click", () => setCanvasZoom(gridPx + 2));
     zoomResetButton.addEventListener("click", () => setCanvasZoom(DEFAULT_GRID_PX));
 
+    floorAddAboveButton.addEventListener("click", () => {
+      addFloor();
+    });
+
+    floorMoveUpButton.addEventListener("click", () => {
+      moveCurrentFloor(1);
+    });
+
+    floorMoveDownButton.addEventListener("click", () => {
+      moveCurrentFloor(-1);
+    });
+
+    floorRemoveButton.addEventListener("click", () => {
+      removeCurrentFloor();
+    });
+
     thicknessInput.addEventListener("change", () => {
       queueLocalAutosave();
       redraw();
@@ -2919,11 +3243,13 @@
 
     loadUiState();
     applyExportPropsVisibility();
+    renderFloorList();
 
     const hasAutosavedPlan = loadProjectFromLocalStorage();
     if (hasAutosavedPlan) {
-      status.textContent = `Autosaved plan loaded. Segments: ${segments.length}`;
+      status.textContent = `Autosaved plan loaded. Level ${currentFloorIndex + 1}/${floors.length}, segments: ${segments.length}`;
     }
+    renderFloorList();
     redraw();
 
     window.addEventListener("beforeunload", () => {
