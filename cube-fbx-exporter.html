@@ -2082,6 +2082,12 @@
         bounded.push(faces[i].points);
       }
 
+      // When there is only one valid closed loop, it is the interior we need
+      // for slab generation. Keep it instead of returning an empty set.
+      if (bounded.length === 0 && faces.length === 1) {
+        return [faces[0].points];
+      }
+
       return bounded;
     }
 
