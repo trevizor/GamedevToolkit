@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tools Index</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --ink: #1e2530;
+      --muted: #5c697a;
+      --accent: #1479ff;
+      --border: #d8e0ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at top left, #ffffff 0%, var(--bg) 65%);
+    }
+
+    .card {
+      width: min(680px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(15, 35, 65, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.6rem;
+    }
+
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    a {
+      display: block;
+      text-decoration: none;
+      color: #0b3f86;
+      background: #edf3fd;
+      border: 1px solid #c9d8ee;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-weight: 600;
+    }
+
+    a:hover {
+      background: #e4efff;
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Tool Pages</h1>
+    <p>Select a tool to open:</p>
+    <ul>
+      <li><a href="cube-fbx-exporter.html">Cube FBX Exporter</a></li>
+      <li><a href="colortool.html">Color Tool</a></li>
+    </ul>
+  </main>
+</body>
+</html>
