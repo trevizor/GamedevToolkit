@@ -2508,7 +2508,20 @@
       }
 
       const key = event.key.toLowerCase();
-      if (key === "delete" || key === "backspace") {
+      if ((event.ctrlKey || event.metaKey) && key === "a") {
+        event.preventDefault();
+        selectedSegmentIndices = new Set();
+        for (let i = 0; i < segments.length; i += 1) {
+          selectedSegmentIndices.add(i);
+        }
+        isMarqueeSelecting = false;
+        marqueeStartWorld = null;
+        marqueeEndWorld = null;
+        marqueeMode = "replace";
+        dragState = null;
+        status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
+        redraw();
+      } else if (key === "delete" || key === "backspace") {
         if (selectedSegmentIndices.size > 0) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
