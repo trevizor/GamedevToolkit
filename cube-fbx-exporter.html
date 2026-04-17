@@ -291,7 +291,7 @@
       <label class="field">Plan Title
         <input id="planTitleInput" class="plan-title" type="text" maxlength="120" value="Untitled" />
       </label>
-      <button id="exportBtn" type="button">Export Walls GLB</button>
+      <button id="exportBtn" type="button">Export Model</button>
       <button id="saveBtn" type="button" class="secondary">Save Plan</button>
       <button id="loadBtn" type="button" class="secondary">Load Plan</button>
       <button id="undoBtn" type="button" class="secondary">Undo</button>
@@ -2984,15 +2984,32 @@
     });
 
     clearButton.addEventListener("click", () => {
-      segments.length = 0;
+      const hasAnySegments = floors.some(level => Array.isArray(level.segments) && level.segments.length > 0);
+      if (!hasAnySegments) {
+        status.textContent = "All levels are already empty.";
+        return;
+      }
+
+      const confirmed = window.confirm("Clear all lines on all levels? You can undo this action.");
+      if (!confirmed) {
+        status.textContent = "Clear canceled.";
+        return;
+      }
+
+      const undoBeforeClear = captureCurrentProjectSnapshot();
+      for (let i = 0; i < floors.length; i += 1) {
+        floors[i].segments.length = 0;
+      }
       selectedSegmentIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
       marqueeMode = "replace";
       dragState = null;
+      recordUndoSnapshot(undoBeforeClear);
       queueLocalAutosave();
-      status.textContent = "Plan cleared.";
+      renderLevelList();
+      status.textContent = "All levels cleared.";
       redraw();
     });
 
