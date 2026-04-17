@@ -406,16 +406,16 @@
     const canvas = document.getElementById("planCanvas");
     const ctx = canvas.getContext("2d");
 
-    function createFloor(name, floorSegments) {
+    function createLevel(name, levelSegments) {
       return {
         name,
-        segments: Array.isArray(floorSegments) ? floorSegments : []
+        segments: Array.isArray(levelSegments) ? levelSegments : []
       };
     }
 
-    const floors = [createFloor("Level 1", [])];
-    let currentFloorIndex = 0;
-    let segments = floors[currentFloorIndex].segments;
+    const floors = [createLevel("Level 1", [])];
+    let currentLevelIndex = 0;
+    let segments = floors[currentLevelIndex].segments;
     const LOCAL_PLAN_STORAGE_KEY = "floor-plan-editor.autosave.v1";
     const LOCAL_HISTORY_STORAGE_KEY = "floor-plan-editor.autosave.history.v1";
     const LOCAL_PLAN_SAVE_DELAY_MS = 250;
@@ -439,89 +439,89 @@
     let redoSnapshot = null;
     let isExportPropsOpen = false;
 
-    function getCurrentFloor() {
-      return floors[currentFloorIndex];
+    function getCurrentLevel() {
+      return floors[currentLevelIndex];
     }
 
-    function setCurrentFloorIndex(nextIndex) {
+    function setCurrentLevelIndex(nextIndex) {
       const clamped = Math.max(0, Math.min(floors.length - 1, nextIndex));
-      currentFloorIndex = clamped;
-      segments = floors[currentFloorIndex].segments;
+      currentLevelIndex = clamped;
+      segments = floors[currentLevelIndex].segments;
       selectedSegmentIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
       marqueeMode = "replace";
       dragState = null;
-      renderFloorList();
+      renderLevelList();
       queueLocalAutosave();
       redraw();
     }
 
-    function buildFloorDefaultName(index) {
+    function buildLevelDefaultName(index) {
       return `Level ${index + 1}`;
     }
 
-    function rebuildFloorNamesIfDefault() {
+    function rebuildLevelNamesIfDefault() {
       for (let i = 0; i < floors.length; i += 1) {
         const defaultLike = /^(Floor|Level)\s+\d+$/i.test(floors[i].name || "");
         if (defaultLike || !floors[i].name) {
-          floors[i].name = buildFloorDefaultName(i);
+          floors[i].name = buildLevelDefaultName(i);
         }
       }
     }
 
-    function renderFloorList() {
+    function renderLevelList() {
       floorsList.innerHTML = "";
       for (let i = floors.length - 1; i >= 0; i -= 1) {
         const floor = floors[i];
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `floor-item${i === currentFloorIndex ? " active" : ""}`;
+        button.className = `floor-item${i === currentLevelIndex ? " active" : ""}`;
         button.textContent = `${floor.name} (${floor.segments.length})`;
         button.addEventListener("click", () => {
-          setCurrentFloorIndex(i);
+          setCurrentLevelIndex(i);
           status.textContent = `Switched to ${floor.name}.`;
         });
         floorsList.appendChild(button);
       }
       floorRemoveButton.disabled = floors.length <= 1;
-      floorMoveUpButton.disabled = floors.length <= 1 || currentFloorIndex <= 0;
-      floorMoveDownButton.disabled = floors.length <= 1 || currentFloorIndex >= floors.length - 1;
+      floorMoveUpButton.disabled = floors.length <= 1 || currentLevelIndex <= 0;
+      floorMoveDownButton.disabled = floors.length <= 1 || currentLevelIndex >= floors.length - 1;
     }
 
-    function addFloor() {
+    function addLevel() {
       const insertAt = floors.length;
-      const newFloor = createFloor("", []);
+      const newFloor = createLevel("", []);
       floors.splice(insertAt, 0, newFloor);
-      rebuildFloorNamesIfDefault();
-      setCurrentFloorIndex(insertAt);
+      rebuildLevelNamesIfDefault();
+      setCurrentLevelIndex(insertAt);
       status.textContent = `${newFloor.name} created.`;
     }
 
-    function removeCurrentFloor() {
+    function removeCurrentLevel() {
       if (floors.length <= 1) {
         return;
       }
-      const removedName = floors[currentFloorIndex].name;
-      floors.splice(currentFloorIndex, 1);
-      rebuildFloorNamesIfDefault();
-      setCurrentFloorIndex(Math.min(currentFloorIndex, floors.length - 1));
+      const removedName = floors[currentLevelIndex].name;
+      floors.splice(currentLevelIndex, 1);
+      rebuildLevelNamesIfDefault();
+      setCurrentLevelIndex(Math.min(currentLevelIndex, floors.length - 1));
       status.textContent = `${removedName} removed.`;
     }
 
-    function moveCurrentFloor(direction) {
-      const targetIndex = currentFloorIndex + direction;
+    function moveCurrentLevel(direction) {
+      const targetIndex = currentLevelIndex + direction;
       if (targetIndex < 0 || targetIndex >= floors.length) {
         return;
       }
 
-      const floor = floors[currentFloorIndex];
-      floors.splice(currentFloorIndex, 1);
+      const floor = floors[currentLevelIndex];
+      floors.splice(currentLevelIndex, 1);
       floors.splice(targetIndex, 0, floor);
 
-      rebuildFloorNamesIfDefault();
-      setCurrentFloorIndex(targetIndex);
+      rebuildLevelNamesIfDefault();
+      setCurrentLevelIndex(targetIndex);
       status.textContent = `${floor.name} moved ${direction < 0 ? "up" : "down"}.`;
     }
 
@@ -730,8 +730,8 @@
     }
 
     function drawSegments() {
-      const below = floors[currentFloorIndex - 1];
-      const above = floors[currentFloorIndex + 1];
+      const below = floors[currentLevelIndex - 1];
+      const above = floors[currentLevelIndex + 1];
 
       if (below) {
         drawFloorSegments(below.segments, { alpha: 0.8, tintColor: "#9ca3af", isCurrent: false });
@@ -858,7 +858,7 @@
       const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
       const windowCount = segments.filter(seg => seg.type === "window").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentFloorIndex + 1}/${floors.length} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount}`;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -1577,7 +1577,7 @@
 
     function serializeProject() {
       const serializedFloors = floors.map((floor, index) => ({
-        name: floor.name || buildFloorDefaultName(index),
+        name: floor.name || buildLevelDefaultName(index),
         segments: floor.segments.map(seg => ({
           a: { x: seg.a.x, y: seg.a.y },
           b: { x: seg.b.x, y: seg.b.y },
@@ -1600,7 +1600,7 @@
           viewOffsetX,
           viewOffsetY
         },
-        currentFloorIndex,
+        currentFloorIndex: currentLevelIndex,
         floors: serializedFloors,
         // Kept for backwards compatibility with older workflows that read only top-level segments.
         segments: serializedFloors[0] ? serializedFloors[0].segments : []
@@ -1686,33 +1686,33 @@
       let loadedFloors = [];
 
       if (Array.isArray(data.floors) && data.floors.length > 0) {
-        loadedFloors = data.floors.map((floor, index) => createFloor(
+        loadedFloors = data.floors.map((floor, index) => createLevel(
           floor && typeof floor.name === "string" && floor.name.trim()
             ? floor.name.trim()
-            : buildFloorDefaultName(index),
+            : buildLevelDefaultName(index),
           sanitizeSegments(floor ? floor.segments : [])
         ));
       } else if (Array.isArray(data.segments)) {
-        loadedFloors = [createFloor("Level 1", sanitizeSegments(data.segments))];
+        loadedFloors = [createLevel("Level 1", sanitizeSegments(data.segments))];
       } else {
         throw new Error("Invalid plan file.");
       }
 
       if (loadedFloors.length === 0) {
-        loadedFloors = [createFloor("Level 1", [])];
+        loadedFloors = [createLevel("Level 1", [])];
       }
 
       floors.length = 0;
       for (let i = 0; i < loadedFloors.length; i += 1) {
         floors.push(loadedFloors[i]);
       }
-      rebuildFloorNamesIfDefault();
+      rebuildLevelNamesIfDefault();
 
       const preferredFloorIndex = Number.isInteger(data.currentFloorIndex)
         ? data.currentFloorIndex
         : 0;
-      currentFloorIndex = Math.max(0, Math.min(floors.length - 1, preferredFloorIndex));
-      segments = floors[currentFloorIndex].segments;
+      currentLevelIndex = Math.max(0, Math.min(floors.length - 1, preferredFloorIndex));
+      segments = floors[currentLevelIndex].segments;
 
       if (data.settings) {
         if (Number.isFinite(Number(data.settings.thickness))) {
@@ -1753,7 +1753,7 @@
       drawing = false;
       startGrid = null;
       pointerGrid = null;
-      renderFloorList();
+      renderLevelList();
     }
 
     function saveProject() {
@@ -2174,59 +2174,18 @@
       return tris;
     }
 
-    function buildWallMeshData(sourceSegments, floorBaseY, meshName) {
+    function buildWallMeshData(sourceSegments, levelBaseY, meshName) {
       const mesh = { name: meshName || "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
       if (!Array.isArray(sourceSegments) || sourceSegments.length === 0) {
         return mesh;
       }
-      floorBaseY = Number.isFinite(floorBaseY) ? floorBaseY : 0;
+      levelBaseY = Number.isFinite(levelBaseY) ? levelBaseY : 0;
 
       const thickness = getWallThickness();
-      const slabThickness = thickness * 0.5;
       const height = getWallHeight();
       const doorHeadHeight = getDoorHeadHeight();
       const windowOpeningGap = getWindowOpeningGap();
-      const joinMode = joinModeSelect.value;
       const half = thickness / 2;
-
-      const rawSegments = [];
-      const nodes = new Map();
-
-      function nodeKey(point) {
-        return `${point.x},${point.z}`;
-      }
-
-      function ensureNode(point) {
-        const key = nodeKey(point);
-        if (!nodes.has(key)) {
-          nodes.set(key, { point, dirs: [] });
-        }
-        return nodes.get(key);
-      }
-
-      for (let i = 0; i < sourceSegments.length; i += 1) {
-        const raw = sourceSegments[i];
-        const a = vec2(raw.a.x * GRID_SIZE_UNITS, raw.a.y * GRID_SIZE_UNITS);
-        const b = vec2(raw.b.x * GRID_SIZE_UNITS, raw.b.y * GRID_SIZE_UNITS);
-        const delta = vec2Sub(b, a);
-        const dir = vec2Normalize(delta);
-        if (vec2Length(dir) < 1e-8) {
-          continue;
-        }
-
-        rawSegments.push({ a, b, type: raw.type || "wall" });
-      }
-
-      const worldSegments = splitSegmentsAtIntersections(rawSegments);
-
-      for (let i = 0; i < worldSegments.length; i += 1) {
-        const seg = worldSegments[i];
-
-        const nodeA = ensureNode(seg.a);
-        const nodeB = ensureNode(seg.b);
-        nodeA.dirs.push(seg.dir);
-        nodeB.dirs.push(vec2Scale(seg.dir, -1));
-      }
 
       const vertexMap = new Map();
 
@@ -2270,231 +2229,60 @@
         addOrientedQuadGrouped(a, b, c, d, desiredNormal, "walls");
       }
 
-      function addOrientedTri(a, b, c, desiredNormal, group) {
-        const ab = sub3(b, a);
-        const ac = sub3(c, a);
-        const n = cross3(ab, ac);
-        const flip = dot3(n, desiredNormal) < 0;
-
-        const i0 = getVertexIndex(a);
-        const i1 = getVertexIndex(b);
-        const i2 = getVertexIndex(c);
-
-        if (flip) {
-          addFace([i0, i2, i1], group);
-        } else {
-          addFace([i0, i1, i2], group);
-        }
-      }
-
-      function computeJoinOffset(node, outDir, sideSign) {
-        const base = vec2PerpLeft(outDir);
-        const normal = sideSign > 0 ? base : vec2Scale(base, -1);
-
-        if (joinMode !== "miter" || node.dirs.length !== 2) {
-          return vec2Scale(normal, half);
-        }
-
-        let other = node.dirs[0];
-        if (Math.abs(vec2Dot(other, outDir)) > 0.999) {
-          other = node.dirs[1];
-        }
-
-        // For orthogonal corners, extend only one wall deterministically and let the
-        // other butt into it. This avoids diagonal corner merges while still covering
-        // the intersection area.
-        const cornerDot = vec2Dot(outDir, other);
-        if (Math.abs(cornerDot) < 0.12) {
-          const preferThisWall = Math.abs(outDir.x) >= Math.abs(outDir.z);
-          if (!preferThisWall) {
-            return vec2Scale(normal, half);
-          }
-
-          const otherBase = vec2PerpLeft(other);
-          const otherNormal = sideSign > 0 ? otherBase : vec2Scale(otherBase, -1);
-          const baseOffset = vec2Scale(normal, half);
-          const denom = vec2Dot(outDir, otherNormal);
-          if (Math.abs(denom) < 1e-6) {
-            return baseOffset;
-          }
-
-          const t = (half - vec2Dot(baseOffset, otherNormal)) / denom;
-          const clampedT = Math.max(-half * 4, Math.min(half * 4, t));
-          const extended = vec2Add(baseOffset, vec2Scale(outDir, clampedT));
-          if (vec2Dot(extended, normal) <= 0) {
-            return baseOffset;
-          }
-          return extended;
-        }
-
-        const otherBase = vec2PerpLeft(other);
-        const otherNormal = sideSign > 0 ? otherBase : vec2Scale(otherBase, -1);
-        const miter = vec2Normalize(vec2Add(normal, otherNormal));
-        const denom = vec2Dot(miter, normal);
-
-        // Reject joins that would send the offset behind the expected side.
-        if (denom <= 0.2) {
-          return vec2Scale(normal, half);
-        }
-
-        const length = Math.min((half / denom), half * 4);
-        const offset = vec2Scale(miter, length);
-        if (vec2Dot(offset, normal) <= 0) {
-          return vec2Scale(normal, half);
-        }
-
-        return offset;
-      }
-
-      function sanitizePolygonXZ(points) {
-        if (!points || points.length < 3) {
-          return [];
-        }
-
-        const eps = 1e-7;
-        const cleaned = [];
-
-        for (let i = 0; i < points.length; i += 1) {
-          const p = points[i];
-          const prev = cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
-          if (!prev || Math.hypot(p.x - prev.x, p.z - prev.z) > eps) {
-            cleaned.push({ x: p.x, z: p.z });
-          }
-        }
-
-        if (cleaned.length >= 2) {
-          const first = cleaned[0];
-          const last = cleaned[cleaned.length - 1];
-          if (Math.hypot(first.x - last.x, first.z - last.z) <= eps) {
-            cleaned.pop();
-          }
-        }
-
-        if (cleaned.length < 3) {
-          return [];
-        }
-
-        const reduced = [];
-        for (let i = 0; i < cleaned.length; i += 1) {
-          const a = cleaned[(i - 1 + cleaned.length) % cleaned.length];
-          const b = cleaned[i];
-          const c = cleaned[(i + 1) % cleaned.length];
-
-          const abx = b.x - a.x;
-          const abz = b.z - a.z;
-          const bcx = c.x - b.x;
-          const bcz = c.z - b.z;
-          const cross = abx * bcz - abz * bcx;
-
-          if (Math.abs(cross) > 1e-10) {
-            reduced.push(b);
-          }
-        }
-
-        if (reduced.length < 3 || Math.abs(polygonSignedAreaXZ(reduced)) <= 1e-8) {
-          return [];
-        }
-
-        return reduced;
-      }
-
-      function addExtrudedPolygonUp(points, baseY, thicknessY, group) {
-        const poly = sanitizePolygonXZ(points);
-        if (poly.length < 3) {
-          return;
-        }
-
-        const triIndices = triangulatePolygonXZ(poly);
-        for (let i = 0; i < triIndices.length; i += 1) {
-          const tri = triIndices[i];
-          const p0 = tri[0];
-          const p1 = tri[1];
-          const p2 = tri[2];
-
-          const b0 = [p0.x, baseY + floorBaseY, p0.z];
-          const b1 = [p1.x, baseY + floorBaseY, p1.z];
-          const b2 = [p2.x, baseY + floorBaseY, p2.z];
-
-          const t0 = [p0.x, baseY + thicknessY + floorBaseY, p0.z];
-          const t1 = [p1.x, baseY + thicknessY + floorBaseY, p1.z];
-          const t2 = [p2.x, baseY + thicknessY + floorBaseY, p2.z];
-
-          addOrientedTri(t0, t1, t2, [0, 1, 0], group);
-          addOrientedTri(b0, b1, b2, [0, -1, 0], group);
-        }
-
-        let cx = 0;
-        let cz = 0;
-        for (let i = 0; i < poly.length; i += 1) {
-          cx += poly[i].x;
-          cz += poly[i].z;
-        }
-        cx /= poly.length;
-        cz /= poly.length;
-
-        for (let i = 0; i < poly.length; i += 1) {
-          const a = poly[i];
-          const b = poly[(i + 1) % poly.length];
-
-          const bottomA = [a.x, baseY + floorBaseY, a.z];
-          const bottomB = [b.x, baseY + floorBaseY, b.z];
-          const topA = [a.x, baseY + thicknessY + floorBaseY, a.z];
-          const topB = [b.x, baseY + thicknessY + floorBaseY, b.z];
-
-          const mx = (a.x + b.x) / 2;
-          const mz = (a.z + b.z) / 2;
-          const nx = mx - cx;
-          const nz = mz - cz;
-          const len = Math.hypot(nx, nz);
-          const normal = len < 1e-8 ? [1, 0, 0] : [nx / len, 0, nz / len];
-
-          addOrientedQuadGrouped(bottomA, bottomB, topB, topA, normal, group);
-        }
-      }
-
-      function addSegmentPrism(seg, startNode, endNode, baseY, topY) {
+      function addSegmentPrism(a, b, baseY, topY) {
         if (topY - baseY <= 1e-6) {
           return;
         }
-        const sLeft = vec2Add(seg.a, computeJoinOffset(startNode, seg.dir, 1));
-        const sRight = vec2Add(seg.a, computeJoinOffset(startNode, seg.dir, -1));
-        const endOut = vec2Scale(seg.dir, -1);
-        const eLeft = vec2Add(seg.b, computeJoinOffset(endNode, endOut, -1));
-        const eRight = vec2Add(seg.b, computeJoinOffset(endNode, endOut, 1));
 
-        const v0 = [sLeft.x, baseY + floorBaseY, sLeft.z];
-        const v1 = [sRight.x, baseY + floorBaseY, sRight.z];
-        const v2 = [eRight.x, baseY + floorBaseY, eRight.z];
-        const v3 = [eLeft.x, baseY + floorBaseY, eLeft.z];
-        const v4 = [sLeft.x, topY + floorBaseY, sLeft.z];
-        const v5 = [sRight.x, topY + floorBaseY, sRight.z];
-        const v6 = [eRight.x, topY + floorBaseY, eRight.z];
-        const v7 = [eLeft.x, topY + floorBaseY, eLeft.z];
+        const delta = vec2Sub(b, a);
+        const len = vec2Length(delta);
+        if (len <= 1e-8) {
+          return;
+        }
+        const dir = vec2Scale(delta, 1 / len);
+        const left = vec2PerpLeft(dir);
+        const offset = vec2Scale(left, half);
 
-        const leftN = vec2PerpLeft(seg.dir);
+        const sLeft = vec2Add(a, offset);
+        const sRight = vec2Sub(a, offset);
+        const eLeft = vec2Add(b, offset);
+        const eRight = vec2Sub(b, offset);
+
+        const v0 = [sLeft.x, baseY + levelBaseY, sLeft.z];
+        const v1 = [sRight.x, baseY + levelBaseY, sRight.z];
+        const v2 = [eRight.x, baseY + levelBaseY, eRight.z];
+        const v3 = [eLeft.x, baseY + levelBaseY, eLeft.z];
+        const v4 = [sLeft.x, topY + levelBaseY, sLeft.z];
+        const v5 = [sRight.x, topY + levelBaseY, sRight.z];
+        const v6 = [eRight.x, topY + levelBaseY, eRight.z];
+        const v7 = [eLeft.x, topY + levelBaseY, eLeft.z];
+
+        const leftN = left;
         const rightN = vec2Scale(leftN, -1);
-        const startN = vec2Scale(seg.dir, -1);
-        const endN = seg.dir;
+        const startN = vec2Scale(dir, -1);
+        const endN = dir;
 
         addOrientedQuad(v4, v7, v6, v5, [0, 1, 0]);
         addOrientedQuad(v0, v1, v2, v3, [0, -1, 0]);
         addOrientedQuad(v0, v3, v7, v4, [leftN.x, 0, leftN.z]);
         addOrientedQuad(v1, v5, v6, v2, [rightN.x, 0, rightN.z]);
-
-        // Only cap true open ends; intersection/join nodes should not create end caps.
-        if (startNode && startNode.dirs.length <= 1) {
-          addOrientedQuad(v0, v4, v5, v1, [startN.x, 0, startN.z]);
-        }
-        if (endNode && endNode.dirs.length <= 1) {
-          addOrientedQuad(v3, v2, v6, v7, [endN.x, 0, endN.z]);
-        }
+        addOrientedQuad(v0, v4, v5, v1, [startN.x, 0, startN.z]);
+        addOrientedQuad(v3, v2, v6, v7, [endN.x, 0, endN.z]);
       }
 
-      for (let i = 0; i < worldSegments.length; i += 1) {
-        const seg = worldSegments[i];
-        const startNode = nodes.get(nodeKey(seg.a));
-        const endNode = nodes.get(nodeKey(seg.b));
-        const segType = seg.type || "wall";
+      for (let i = 0; i < sourceSegments.length; i += 1) {
+        const raw = sourceSegments[i];
+        if (!raw || !raw.a || !raw.b) {
+          continue;
+        }
+
+        const a = vec2(Number(raw.a.x) * GRID_SIZE_UNITS, Number(raw.a.y) * GRID_SIZE_UNITS);
+        const b = vec2(Number(raw.b.x) * GRID_SIZE_UNITS, Number(raw.b.y) * GRID_SIZE_UNITS);
+        if (![a.x, a.z, b.x, b.z].every(Number.isFinite)) {
+          continue;
+        }
+
+        const segType = raw.type || "wall";
 
         if (segType === "fakewall") {
           continue;
@@ -2502,12 +2290,12 @@
 
         if (segType === "door") {
           const baseY = Math.min(doorHeadHeight, height);
-          addSegmentPrism(seg, startNode, endNode, baseY, height);
+          addSegmentPrism(a, b, baseY, height);
           continue;
         }
 
         if (segType === "halfwall") {
-          addSegmentPrism(seg, startNode, endNode, 0, height * HALF_WALL_HEIGHT_FACTOR);
+          addSegmentPrism(a, b, 0, height * HALF_WALL_HEIGHT_FACTOR);
           continue;
         }
 
@@ -2518,20 +2306,12 @@
           }
           const lowerTop = (height - gap) * 0.5;
           const upperBottom = lowerTop + gap;
-          addSegmentPrism(seg, startNode, endNode, 0, lowerTop);
-          addSegmentPrism(seg, startNode, endNode, upperBottom, height);
+          addSegmentPrism(a, b, 0, lowerTop);
+          addSegmentPrism(a, b, upperBottom, height);
           continue;
         }
 
-        addSegmentPrism(seg, startNode, endNode, 0, height);
-      }
-
-      const closureSegments = worldSegments.filter(seg => (seg.type || "wall") !== "halfwall" && (seg.type || "wall") !== "door" && (seg.type || "wall") !== "window");
-      const sealedFaces = extractBoundedFacesFromSegments(closureSegments);
-      for (let i = 0; i < sealedFaces.length; i += 1) {
-        const poly = sealedFaces[i];
-        addExtrudedPolygonUp(poly, 0, slabThickness, "floor");
-        addExtrudedPolygonUp(poly, height, slabThickness, "ceiling");
+        addSegmentPrism(a, b, 0, height);
       }
 
       removeOverlappingFaces(mesh);
@@ -2715,7 +2495,7 @@
           const floorMesh = buildWallMeshData(
             floor.segments,
             i * floorStride,
-            floor.name || buildFloorDefaultName(i)
+            floor.name || buildLevelDefaultName(i)
           );
 
           if (floorMesh.vertices.length === 0 || floorMesh.faces.length === 0) {
@@ -3201,19 +2981,19 @@
     zoomResetButton.addEventListener("click", () => setCanvasZoom(DEFAULT_GRID_PX));
 
     floorAddAboveButton.addEventListener("click", () => {
-      addFloor();
+      addLevel();
     });
 
     floorMoveUpButton.addEventListener("click", () => {
-      moveCurrentFloor(1);
+      moveCurrentLevel(1);
     });
 
     floorMoveDownButton.addEventListener("click", () => {
-      moveCurrentFloor(-1);
+      moveCurrentLevel(-1);
     });
 
     floorRemoveButton.addEventListener("click", () => {
-      removeCurrentFloor();
+      removeCurrentLevel();
     });
 
     thicknessInput.addEventListener("change", () => {
@@ -3249,13 +3029,13 @@
 
     loadUiState();
     applyExportPropsVisibility();
-    renderFloorList();
+    renderLevelList();
 
     const hasAutosavedPlan = loadProjectFromLocalStorage();
     if (hasAutosavedPlan) {
-      status.textContent = `Autosaved plan loaded. Level ${currentFloorIndex + 1}/${floors.length}, segments: ${segments.length}`;
+      status.textContent = `Autosaved plan loaded. Level ${currentLevelIndex + 1}/${floors.length}, segments: ${segments.length}`;
     }
-    renderFloorList();
+    renderLevelList();
     redraw();
 
     window.addEventListener("beforeunload", () => {
