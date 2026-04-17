@@ -1721,7 +1721,6 @@
         if (hit.t < -eps || hit.t > 1 + eps) {
           continue;
         }
-        // Split only if intersection lies strictly inside existing segment.
         if (hit.u <= eps || hit.u >= 1 - eps) {
           continue;
         }
@@ -2184,11 +2183,107 @@
       };
     }
 
+    function endpointParamOnSegment(point, seg) {
+      const eps = 1e-6;
+      const vx = seg.b.x - seg.a.x;
+      const vz = seg.b.z - seg.a.z;
+      const lenSq = vx * vx + vz * vz;
+      if (lenSq < 1e-12) {
+        return null;
+      }
+
+      const wx = point.x - seg.a.x;
+      const wz = point.z - seg.a.z;
+      const t = (wx * vx + wz * vz) / lenSq;
+      if (t < -eps || t > 1 + eps) {
+        return null;
+      }
+
+      const cx = seg.a.x + vx * t;
+      const cz = seg.a.z + vz * t;
+      const dist = Math.hypot(point.x - cx, point.z - cz);
+      if (dist > eps) {
+        return null;
+      }
+
+      return Math.max(0, Math.min(1, t));
+    }
+
+    function addEndpointTouchSplits(segA, segB, splitA, splitB) {
+      const endpointsA = [{ point: segA.a, t: 0 }, { point: segA.b, t: 1 }];
+      const endpointsB = [{ point: segB.a, t: 0 }, { point: segB.b, t: 1 }];
+
+      for (let i = 0; i < endpointsA.length; i += 1) {
+        const hitOnB = endpointParamOnSegment(endpointsA[i].point, segB);
+        if (hitOnB !== null) {
+          splitA.push(endpointsA[i].t);
+          splitB.push(hitOnB);
+        }
+      }
+
+      for (let i = 0; i < endpointsB.length; i += 1) {
+        const hitOnA = endpointParamOnSegment(endpointsB[i].point, segA);
+        if (hitOnA !== null) {
+          splitB.push(endpointsB[i].t);
+          splitA.push(hitOnA);
+        }
+      }
+    }
+
+    function addCollinearOverlapSplits(segA, segB, splitA, splitB) {
+      const eps = 1e-7;
+      const ax = segA.b.x - segA.a.x;
+      const az = segA.b.z - segA.a.z;
+      const bx = segB.b.x - segB.a.x;
+      const bz = segB.b.z - segB.a.z;
+      const lenASq = ax * ax + az * az;
+      const lenBSq = bx * bx + bz * bz;
+
+      if (lenASq < 1e-12 || lenBSq < 1e-12) {
+        return;
+      }
+
+      const crossAB = ax * bz - az * bx;
+      if (Math.abs(crossAB) > eps) {
+        return;
+      }
+
+      const apx = segB.a.x - segA.a.x;
+      const apz = segB.a.z - segA.a.z;
+      const crossAP = apx * az - apz * ax;
+      if (Math.abs(crossAP) > eps) {
+        return;
+      }
+
+      // Collinear pair: split at overlap boundaries so graph face extraction stays consistent.
+      const tB0OnA = ((segB.a.x - segA.a.x) * ax + (segB.a.z - segA.a.z) * az) / lenASq;
+      const tB1OnA = ((segB.b.x - segA.a.x) * ax + (segB.b.z - segA.a.z) * az) / lenASq;
+      const tA0OnB = ((segA.a.x - segB.a.x) * bx + (segA.a.z - segB.a.z) * bz) / lenBSq;
+      const tA1OnB = ((segA.b.x - segB.a.x) * bx + (segA.b.z - segB.a.z) * bz) / lenBSq;
+
+      const overlapMinA = Math.max(0, Math.min(tB0OnA, tB1OnA));
+      const overlapMaxA = Math.min(1, Math.max(tB0OnA, tB1OnA));
+      const overlapMinB = Math.max(0, Math.min(tA0OnB, tA1OnB));
+      const overlapMaxB = Math.min(1, Math.max(tA0OnB, tA1OnB));
+
+      if (overlapMaxA - overlapMinA <= eps || overlapMaxB - overlapMinB <= eps) {
+        return;
+      }
+
+      splitA.push(Math.max(0, Math.min(1, overlapMinA)));
+      splitA.push(Math.max(0, Math.min(1, overlapMaxA)));
+      splitB.push(Math.max(0, Math.min(1, overlapMinB)));
+      splitB.push(Math.max(0, Math.min(1, overlapMaxB)));
+    }
+
     function splitSegmentsAtIntersections(rawSegments) {
       const splitT = rawSegments.map(() => [0, 1]);
 
       for (let i = 0; i < rawSegments.length; i += 1) {
         for (let j = i + 1; j < rawSegments.length; j += 1) {
+          addEndpointTouchSplits(rawSegments[i], rawSegments[j], splitT[i], splitT[j]);
+          addCollinearOverlapSplits(rawSegments[i], rawSegments[j], splitT[i], splitT[j]);
+
           const hit = segmentIntersectionParams(rawSegments[i], rawSegments[j]);
           if (!hit) {
             continue;
