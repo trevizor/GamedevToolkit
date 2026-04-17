@@ -217,7 +217,8 @@
       <button id="toolCutBtn" type="button" class="secondary tool">Cut Tool</button>
       <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
       <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
-      <button id="undoBtn" type="button" class="secondary">Undo Last Line</button>
+      <button id="undoBtn" type="button" class="secondary">Undo</button>
+      <button id="redoBtn" type="button" class="secondary">Redo</button>
     </div>
 
     <div class="canvas-wrap">
@@ -251,6 +252,7 @@
     const loadButton = document.getElementById("loadBtn");
     const loadInput = document.getElementById("loadInput");
     const undoButton = document.getElementById("undoBtn");
+    const redoButton = document.getElementById("redoBtn");
     const clearButton = document.getElementById("clearBtn");
     const toolWallButton = document.getElementById("toolWallBtn");
     const toolBoxButton = document.getElementById("toolBoxBtn");
@@ -274,6 +276,7 @@
 
     const segments = [];
     const LOCAL_PLAN_STORAGE_KEY = "floor-plan-editor.autosave.v1";
+    const LOCAL_HISTORY_STORAGE_KEY = "floor-plan-editor.autosave.history.v1";
     const LOCAL_PLAN_SAVE_DELAY_MS = 250;
     let pointerGrid = null;
     let startGrid = null;
@@ -291,6 +294,8 @@
     let marqueeMode = "replace";
     let dragState = null;
     let localSaveTimer = null;
+    let undoSnapshot = null;
+    let redoSnapshot = null;
 
     const toolButtons = {
       wall: toolWallButton,
@@ -559,6 +564,114 @@
       return { x: point.x, y: point.y };
     }
 
+    function cloneProjectData(data) {
+      return JSON.parse(JSON.stringify(data));
+    }
+
+    function captureCurrentProjectSnapshot() {
+      return cloneProjectData(serializeProject());
+    }
+
+    function recordUndoSnapshot(snapshot) {
+      undoSnapshot = cloneProjectData(snapshot || serializeProject());
+      redoSnapshot = null;
+    }
+
+    function saveHistoryToLocalStorage() {
+      try {
+        const payload = {
+          undoSnapshot,
+          redoSnapshot
+        };
+        localStorage.setItem(LOCAL_HISTORY_STORAGE_KEY, JSON.stringify(payload));
+      } catch (error) {
+        console.warn("Failed to save undo/redo history.", error);
+      }
+    }
+
+    function loadHistoryFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(LOCAL_HISTORY_STORAGE_KEY);
+        if (!raw) {
+          undoSnapshot = null;
+          redoSnapshot = null;
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        undoSnapshot = parsed && parsed.undoSnapshot ? cloneProjectData(parsed.undoSnapshot) : null;
+        redoSnapshot = parsed && parsed.redoSnapshot ? cloneProjectData(parsed.redoSnapshot) : null;
+      } catch (error) {
+        console.warn("Failed to load undo/redo history.", error);
+        undoSnapshot = null;
+        redoSnapshot = null;
+      }
+    }
+
+    function restoreProjectSnapshot(snapshot) {
+      if (!snapshot) {
+        return false;
+      }
+      applyProjectData(cloneProjectData(snapshot));
+      queueLocalAutosave();
+      redraw();
+      return true;
+    }
+
+    function performUndo() {
+      if (!undoSnapshot) {
+        return false;
+      }
+      const current = captureCurrentProjectSnapshot();
+      const target = undoSnapshot;
+      undoSnapshot = null;
+      redoSnapshot = current;
+      return restoreProjectSnapshot(target);
+    }
+
+    function performRedo() {
+      if (!redoSnapshot) {
+        return false;
+      }
+      const current = captureCurrentProjectSnapshot();
+      const target = redoSnapshot;
+      redoSnapshot = null;
+      undoSnapshot = current;
+      return restoreProjectSnapshot(target);
+    }
+
+    function didDragChangeGeometry(drag) {
+      if (!drag) {
+        return false;
+      }
+
+      if (drag.mode === "move-endpoint") {
+        const seg = segments[drag.index];
+        if (!seg) {
+          return false;
+        }
+        const p = drag.endpoint === "a" ? seg.a : seg.b;
+        return Math.hypot(p.x - drag.startPoint.x, p.y - drag.startPoint.y) > 1e-9;
+      }
+
+      if (drag.mode === "move-selection" && Array.isArray(drag.originals)) {
+        for (let i = 0; i < drag.originals.length; i += 1) {
+          const original = drag.originals[i];
+          const seg = segments[original.index];
+          if (!seg) {
+            continue;
+          }
+          if (Math.hypot(seg.a.x - original.a.x, seg.a.y - original.a.y) > 1e-9) {
+            return true;
+          }
+          if (Math.hypot(seg.b.x - original.b.x, seg.b.y - original.b.y) > 1e-9) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
     function setTool(nextTool) {
       activeTool = nextTool;
       drawing = false;
@@ -590,6 +703,7 @@
     function eraseAtPoint(point) {
       const index = findNearestSegmentIndex(point, () => true);
       if (index >= 0) {
+        recordUndoSnapshot();
         segments.splice(index, 1);
         selectedSegmentIndices.clear();
         queueLocalAutosave();
@@ -602,6 +716,8 @@
       if (selectedSegmentIndices.size === 0) {
         return 0;
       }
+
+      recordUndoSnapshot();
 
       const indices = Array.from(selectedSegmentIndices).sort((a, b) => b - a);
       for (let i = 0; i < indices.length; i += 1) {
@@ -1152,6 +1268,7 @@
       try {
         const text = JSON.stringify(serializeProject());
         localStorage.setItem(LOCAL_PLAN_STORAGE_KEY, text);
+        saveHistoryToLocalStorage();
       } catch (error) {
         console.warn("Failed to autosave project to local storage.", error);
       }
@@ -1175,6 +1292,7 @@
         }
         const data = JSON.parse(raw);
         applyProjectData(data);
+        loadHistoryFromLocalStorage();
         setTool("select");
         return true;
       } catch (error) {
@@ -1268,6 +1386,8 @@
           const raw = String(reader.result || "");
           const data = JSON.parse(raw);
           applyProjectData(data);
+          undoSnapshot = null;
+          redoSnapshot = null;
           setTool("select");
           queueLocalAutosave();
           status.textContent = `Plan loaded. Segments: ${segments.length}`;
@@ -2214,7 +2334,8 @@
             index: endpointHit.index,
             endpoint: endpointHit.endpoint,
             startPointer: clonePoint(pointerGrid),
-            startPoint: endpointHit.startPoint
+            startPoint: endpointHit.startPoint,
+            undoSnapshot: captureCurrentProjectSnapshot()
           };
           status.textContent = "Drag endpoint to reshape line.";
           redraw();
@@ -2232,6 +2353,7 @@
             mode: "move-selection",
             indices: selected,
             startPointer: clonePoint(pointerGrid),
+            undoSnapshot: captureCurrentProjectSnapshot(),
             originals: selected.map(idx => ({
               index: idx,
               a: clonePoint(segments[idx].a),
@@ -2402,9 +2524,16 @@
           status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
         } else if (dragState) {
           if (dragState.mode === "move-endpoint") {
+            const changed = didDragChangeGeometry(dragState);
             const merged = tryMergeMovedEndpoint(dragState);
+            if ((changed || merged) && dragState.undoSnapshot) {
+              recordUndoSnapshot(dragState.undoSnapshot);
+            }
             status.textContent = merged ? "Lines merged." : "Line endpoint moved.";
           } else {
+            if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
+              recordUndoSnapshot(dragState.undoSnapshot);
+            }
             status.textContent = `Moved ${selectedSegmentIndices.size} line(s).`;
           }
         }
@@ -2508,7 +2637,22 @@
       }
 
       const key = event.key.toLowerCase();
-      if ((event.ctrlKey || event.metaKey) && key === "a") {
+      const isPrimaryModifier = event.ctrlKey || event.metaKey;
+      if (isPrimaryModifier && !event.shiftKey && key === "z") {
+        event.preventDefault();
+        if (performUndo()) {
+          status.textContent = "Undo applied.";
+        } else {
+          status.textContent = "Nothing to undo.";
+        }
+      } else if (isPrimaryModifier && (key === "y" || (event.shiftKey && key === "z"))) {
+        event.preventDefault();
+        if (performRedo()) {
+          status.textContent = "Redo applied.";
+        } else {
+          status.textContent = "Nothing to redo.";
+        }
+      } else if (isPrimaryModifier && key === "a") {
         event.preventDefault();
         selectedSegmentIndices = new Set();
         for (let i = 0; i < segments.length; i += 1) {
@@ -2541,11 +2685,18 @@
     });
 
     undoButton.addEventListener("click", () => {
-      if (segments.length > 0) {
-        segments.pop();
-        queueLocalAutosave();
-        status.textContent = "Last line removed.";
-        redraw();
+      if (performUndo()) {
+        status.textContent = "Undo applied.";
+      } else {
+        status.textContent = "Nothing to undo.";
+      }
+    });
+
+    redoButton.addEventListener("click", () => {
+      if (performRedo()) {
+        status.textContent = "Redo applied.";
+      } else {
+        status.textContent = "Nothing to redo.";
       }
     });
 
