@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Floor Plan Wall GLB Exporter</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --ink: #1e2530;
+      --muted: #5c697a;
+      --accent: #1479ff;
+      --accent-ink: #ffffff;
+      --accent-soft: #cfe3ff;
+      --border: #d8e0ec;
+      --grid: #dce4f0;
+      --line: #0f1722;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at top left, #ffffff 0%, var(--bg) 65%);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(980px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(15, 35, 65, 0.08);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-left: auto;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 1.5rem;
+    }
+
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      padding: 12px 16px;
+      font-size: 0.96rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    button.secondary {
+      background: #edf3fd;
+      color: #22406d;
+    }
+
+    button:hover {
+      filter: brightness(1.07);
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    #status {
+      margin-top: 14px;
+      min-height: 1.4em;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .canvas-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fdfefe;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: crosshair;
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Floor Plan to Walls GLB</h1>
+    <p>Draw line segments snapped to a 0.25 grid. Export creates wall cubes along those lines.</p>
+
+    <div class="toolbar">
+      <button id="exportBtn" type="button">Export Walls GLB</button>
+      <button id="undoBtn" type="button" class="secondary">Undo Last Line</button>
+      <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
+      <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5</span>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="planCanvas" width="920" height="560"></canvas>
+    </div>
+
+    <div id="status" aria-live="polite"></div>
+  </main>
+
+  <script>
+    const GRID_SIZE_UNITS = 0.25;
+    const GRID_PX = 24;
+    const CUBE_SIZE = 0.25;
+    const WALL_HEIGHT_CUBES = 10;
+
+    const exportButton = document.getElementById("exportBtn");
+    const undoButton = document.getElementById("undoBtn");
+    const clearButton = document.getElementById("clearBtn");
+    const status = document.getElementById("status");
+    const meta = document.getElementById("meta");
+    const canvas = document.getElementById("planCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const segments = [];
+    let pointerGrid = null;
+    let startGrid = null;
+    let drawing = false;
+
+    function gridToCanvas(point) {
+      return { x: point.x * GRID_PX, y: point.y * GRID_PX };
+    }
+
+    function canvasToGrid(x, y) {
+      return {
+        x: Math.round(x / GRID_PX),
+        y: Math.round(y / GRID_PX)
+      };
+    }
+
+    function getPointerPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = canvas.width / rect.width;
+      const sy = canvas.height / rect.height;
+      return {
+        x: (event.clientX - rect.left) * sx,
+        y: (event.clientY - rect.top) * sy
+      };
+    }
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 1;
+
+      for (let x = 0; x <= canvas.width; x += GRID_PX) {
+        ctx.strokeStyle = x % (GRID_PX * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, canvas.height);
+        ctx.stroke();
+      }
+
+      for (let y = 0; y <= canvas.height; y += GRID_PX) {
+        ctx.strokeStyle = y % (GRID_PX * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(canvas.width, y + 0.5);
+        ctx.stroke();
+      }
+    }
+
+    function drawSegments() {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#0f1722";
+      segments.forEach(seg => {
+        const a = gridToCanvas(seg.a);
+        const b = gridToCanvas(seg.b);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      });
+    }
+
+    function drawPreview() {
+      if (drawing && startGrid && pointerGrid) {
+        const a = gridToCanvas(startGrid);
+        const b = gridToCanvas(pointerGrid);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#1479ff";
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      if (pointerGrid) {
+        const p = gridToCanvas(pointerGrid);
+        ctx.fillStyle = "#1479ff";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function redraw() {
+      drawGrid();
+      drawSegments();
+      drawPreview();
+      updateMeta();
+    }
+
+    function updateMeta() {
+      const wallHeight = (WALL_HEIGHT_CUBES * CUBE_SIZE).toFixed(2);
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Wall Height: ${wallHeight} | Segments: ${segments.length}`;
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function addCube(mesh, centerX, centerY, centerZ, size) {
+      const half = size / 2;
+      const base = mesh.vertices.length;
+
+      mesh.vertices.push(
+        [centerX - half, centerY - half, centerZ - half],
+        [centerX + half, centerY - half, centerZ - half],
+        [centerX + half, centerY + half, centerZ - half],
+        [centerX - half, centerY + half, centerZ - half],
+        [centerX - half, centerY - half, centerZ + half],
+        [centerX + half, centerY - half, centerZ + half],
+        [centerX + half, centerY + half, centerZ + half],
+        [centerX - half, centerY + half, centerZ + half]
+      );
+
+      mesh.faces.push(
+        [base + 0, base + 1, base + 2], [base + 0, base + 2, base + 3],
+        [base + 4, base + 6, base + 5], [base + 4, base + 7, base + 6],
+        [base + 0, base + 4, base + 5], [base + 0, base + 5, base + 1],
+        [base + 1, base + 5, base + 6], [base + 1, base + 6, base + 2],
+        [base + 2, base + 6, base + 7], [base + 2, base + 7, base + 3],
+        [base + 3, base + 7, base + 4], [base + 3, base + 4, base + 0]
+      );
+    }
+
+    function collectWallFootprint() {
+      const points = new Set();
+
+      segments.forEach(seg => {
+        const dx = seg.b.x - seg.a.x;
+        const dy = seg.b.y - seg.a.y;
+        const steps = Math.max(Math.abs(dx), Math.abs(dy));
+
+        if (steps === 0) {
+          points.add(`${seg.a.x},${seg.a.y}`);
+          return;
+        }
+
+        for (let i = 0; i <= steps; i += 1) {
+          const t = i / steps;
+          const gx = Math.round(seg.a.x + dx * t);
+          const gy = Math.round(seg.a.y + dy * t);
+          points.add(`${gx},${gy}`);
+        }
+      });
+
+      return points;
+    }
+
+    function buildWallMeshData() {
+      const footprint = collectWallFootprint();
+      const mesh = { name: "FloorPlanWalls", vertices: [], faces: [] };
+
+      footprint.forEach(key => {
+        const coords = key.split(",");
+        const gx = Number(coords[0]);
+        const gy = Number(coords[1]);
+
+        const worldX = gx * GRID_SIZE_UNITS;
+        const worldZ = gy * GRID_SIZE_UNITS;
+
+        for (let level = 0; level < WALL_HEIGHT_CUBES; level += 1) {
+          const worldY = level * CUBE_SIZE + CUBE_SIZE / 2;
+          addCube(mesh, worldX, worldY, worldZ, CUBE_SIZE);
+        }
+      });
+
+      return mesh;
+    }
+
+    function buildGlbFromMesh(meshData) {
+      const positions = new Float32Array(meshData.vertices.length * 3);
+      for (let i = 0; i < meshData.vertices.length; i += 1) {
+        positions[i * 3 + 0] = meshData.vertices[i][0];
+        positions[i * 3 + 1] = meshData.vertices[i][1];
+        positions[i * 3 + 2] = meshData.vertices[i][2];
+      }
+
+      const indices = new Uint32Array(meshData.faces.length * 3);
+      for (let i = 0; i < meshData.faces.length; i += 1) {
+        indices[i * 3 + 0] = meshData.faces[i][0];
+        indices[i * 3 + 1] = meshData.faces[i][2];
+        indices[i * 3 + 2] = meshData.faces[i][1];
+      }
+
+      const posMin = [Infinity, Infinity, Infinity];
+      const posMax = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < positions.length; i += 3) {
+        posMin[0] = Math.min(posMin[0], positions[i + 0]);
+        posMin[1] = Math.min(posMin[1], positions[i + 1]);
+        posMin[2] = Math.min(posMin[2], positions[i + 2]);
+        posMax[0] = Math.max(posMax[0], positions[i + 0]);
+        posMax[1] = Math.max(posMax[1], positions[i + 1]);
+        posMax[2] = Math.max(posMax[2], positions[i + 2]);
+      }
+
+      const positionBytes = new Uint8Array(positions.buffer);
+      const indexBytes = new Uint8Array(indices.buffer);
+
+      const posOffset = 0;
+      const idxOffset = positionBytes.byteLength;
+      const binByteLength = idxOffset + indexBytes.byteLength;
+
+      const bin = new Uint8Array(binByteLength);
+      bin.set(positionBytes, posOffset);
+      bin.set(indexBytes, idxOffset);
+
+      const gltf = {
+        asset: { version: "2.0", generator: "FloorPlanWallExporter" },
+        scene: 0,
+        scenes: [{ nodes: [0] }],
+        nodes: [{ mesh: 0, name: meshData.name || "FloorPlanWalls" }],
+        meshes: [{
+          name: meshData.name || "FloorPlanWalls",
+          primitives: [{
+            attributes: { POSITION: 0 },
+            indices: 1,
+            mode: 4
+          }]
+        }],
+        buffers: [{ byteLength: binByteLength }],
+        bufferViews: [
+          { buffer: 0, byteOffset: posOffset, byteLength: positionBytes.byteLength, target: 34962 },
+          { buffer: 0, byteOffset: idxOffset, byteLength: indexBytes.byteLength, target: 34963 }
+        ],
+        accessors: [
+          {
+            bufferView: 0,
+            byteOffset: 0,
+            componentType: 5126,
+            count: meshData.vertices.length,
+            type: "VEC3",
+            min: posMin,
+            max: posMax
+          },
+          {
+            bufferView: 1,
+            byteOffset: 0,
+            componentType: 5125,
+            count: meshData.faces.length * 3,
+            type: "SCALAR"
+          }
+        ]
+      };
+
+      const jsonBytes = new TextEncoder().encode(JSON.stringify(gltf));
+      const jsonPadding = (4 - (jsonBytes.byteLength % 4)) % 4;
+      const binPadding = (4 - (bin.byteLength % 4)) % 4;
+
+      const jsonChunkLength = jsonBytes.byteLength + jsonPadding;
+      const binChunkLength = bin.byteLength + binPadding;
+      const totalLength = 12 + 8 + jsonChunkLength + 8 + binChunkLength;
+
+      const glb = new ArrayBuffer(totalLength);
+      const view = new DataView(glb);
+      const out = new Uint8Array(glb);
+
+      let offset = 0;
+      view.setUint32(offset, 0x46546c67, true); offset += 4;
+      view.setUint32(offset, 2, true); offset += 4;
+      view.setUint32(offset, totalLength, true); offset += 4;
+
+      view.setUint32(offset, jsonChunkLength, true); offset += 4;
+      view.setUint32(offset, 0x4e4f534a, true); offset += 4;
+      out.set(jsonBytes, offset); offset += jsonBytes.byteLength;
+      for (let i = 0; i < jsonPadding; i += 1) {
+        out[offset++] = 0x20;
+      }
+
+      view.setUint32(offset, binChunkLength, true); offset += 4;
+      view.setUint32(offset, 0x004e4942, true); offset += 4;
+      out.set(bin, offset); offset += bin.byteLength;
+      for (let i = 0; i < binPadding; i += 1) {
+        out[offset++] = 0x00;
+      }
+
+      return glb;
+    }
+
+    function exportWallsAsGlb() {
+      if (segments.length === 0) {
+        status.textContent = "Draw at least one line before exporting.";
+        return;
+      }
+
+      status.textContent = "Building wall cubes and exporting GLB...";
+
+      try {
+        const meshData = buildWallMeshData();
+        const glbBuffer = buildGlbFromMesh(meshData);
+        const blob = new Blob([glbBuffer], { type: "model/gltf-binary" });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        downloadBlob(blob, `floor-plan-walls-${timestamp}.glb`);
+        status.textContent = "Walls GLB exported.";
+      } catch (error) {
+        console.error(error);
+        status.textContent = "Failed to export walls GLB. Check browser console for details.";
+      }
+    }
+
+    canvas.addEventListener("mousedown", event => {
+      const p = getPointerPosition(event);
+      startGrid = canvasToGrid(p.x, p.y);
+      pointerGrid = startGrid;
+      drawing = true;
+      redraw();
+    });
+
+    canvas.addEventListener("mousemove", event => {
+      const p = getPointerPosition(event);
+      pointerGrid = canvasToGrid(p.x, p.y);
+      redraw();
+    });
+
+    canvas.addEventListener("mouseup", event => {
+      if (!drawing || !startGrid) {
+        return;
+      }
+
+      const p = getPointerPosition(event);
+      const endGrid = canvasToGrid(p.x, p.y);
+
+      if (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y) {
+        segments.push({
+          a: { x: startGrid.x, y: startGrid.y },
+          b: { x: endGrid.x, y: endGrid.y }
+        });
+        status.textContent = `Line added. Total lines: ${segments.length}`;
+      }
+
+      drawing = false;
+      startGrid = null;
+      redraw();
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      pointerGrid = null;
+      redraw();
+    });
+
+    undoButton.addEventListener("click", () => {
+      if (segments.length > 0) {
+        segments.pop();
+        status.textContent = "Last line removed.";
+        redraw();
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      segments.length = 0;
+      status.textContent = "Plan cleared.";
+      redraw();
+    });
+
+    exportButton.addEventListener("click", () => {
+      exportWallsAsGlb();
+    });
+
+    redraw();
+  </script>
+</body>
+</html>
