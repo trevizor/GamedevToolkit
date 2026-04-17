@@ -135,6 +135,37 @@
       background: #fdfefe;
     }
 
+    .zoom-bar {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f7faff;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .zoom-bar .label {
+      color: #22406d;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .zoom-bar button {
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      border-radius: 8px;
+    }
+
+    .zoom-readout {
+      margin-left: auto;
+      color: #32455f;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
     canvas {
       display: block;
       width: 100%;
@@ -176,12 +207,23 @@
       <canvas id="planCanvas" width="920" height="560"></canvas>
     </div>
 
+    <div class="zoom-bar" aria-label="Canvas zoom controls">
+      <span class="label">Canvas Zoom</span>
+      <button id="zoomOutBtn" type="button" class="secondary">-</button>
+      <button id="zoomInBtn" type="button" class="secondary">+</button>
+      <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
+      <span id="zoomReadout" class="zoom-readout">100%</span>
+    </div>
+
     <div id="status" aria-live="polite"></div>
   </main>
 
   <script>
     const GRID_SIZE_UNITS = 0.25;
-    const GRID_PX = 24;
+    const DEFAULT_GRID_PX = 16;
+    const MIN_GRID_PX = 10;
+    const MAX_GRID_PX = 36;
+    let gridPx = DEFAULT_GRID_PX;
     const DOOR_WIDTH_UNITS = 1;
     const DOOR_HEAD_HEIGHT_UNITS = 2;
 
@@ -192,6 +234,10 @@
     const toolDoorButton = document.getElementById("toolDoorBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
+    const zoomOutButton = document.getElementById("zoomOutBtn");
+    const zoomInButton = document.getElementById("zoomInBtn");
+    const zoomResetButton = document.getElementById("zoomResetBtn");
+    const zoomReadout = document.getElementById("zoomReadout");
     const thicknessInput = document.getElementById("thicknessInput");
     const heightInput = document.getElementById("heightInput");
     const joinModeSelect = document.getElementById("joinModeSelect");
@@ -232,13 +278,13 @@
     }
 
     function gridToCanvas(point) {
-      return { x: point.x * GRID_PX, y: point.y * GRID_PX };
+      return { x: point.x * gridPx, y: point.y * gridPx };
     }
 
     function canvasToGrid(x, y) {
       return {
-        x: Math.round(x / GRID_PX),
-        y: Math.round(y / GRID_PX)
+        x: Math.round(x / gridPx),
+        y: Math.round(y / gridPx)
       };
     }
 
@@ -256,16 +302,16 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 1;
 
-      for (let x = 0; x <= canvas.width; x += GRID_PX) {
-        ctx.strokeStyle = x % (GRID_PX * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
+      for (let x = 0; x <= canvas.width; x += gridPx) {
+        ctx.strokeStyle = x % (gridPx * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
         ctx.moveTo(x + 0.5, 0);
         ctx.lineTo(x + 0.5, canvas.height);
         ctx.stroke();
       }
 
-      for (let y = 0; y <= canvas.height; y += GRID_PX) {
-        ctx.strokeStyle = y % (GRID_PX * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
+      for (let y = 0; y <= canvas.height; y += gridPx) {
+        ctx.strokeStyle = y % (gridPx * 4) === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
         ctx.moveTo(0, y + 0.5);
         ctx.lineTo(canvas.width, y + 0.5);
@@ -313,6 +359,7 @@
       drawSegments();
       drawPreview();
       updateMeta();
+      updateZoomReadout();
     }
 
     function updateMeta() {
@@ -325,6 +372,16 @@
 
     function getDoorWidthGrid() {
       return DOOR_WIDTH_UNITS / GRID_SIZE_UNITS;
+    }
+
+    function updateZoomReadout() {
+      const percent = Math.round((gridPx / DEFAULT_GRID_PX) * 100);
+      zoomReadout.textContent = `${percent}%`;
+    }
+
+    function setCanvasZoom(nextGridPx) {
+      gridPx = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, nextGridPx));
+      redraw();
     }
 
     function clonePoint(point) {
@@ -1391,6 +1448,10 @@
     toolDoorButton.addEventListener("click", () => setTool("door"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
+
+    zoomOutButton.addEventListener("click", () => setCanvasZoom(gridPx - 2));
+    zoomInButton.addEventListener("click", () => setCanvasZoom(gridPx + 2));
+    zoomResetButton.addEventListener("click", () => setCanvasZoom(DEFAULT_GRID_PX));
 
     thicknessInput.addEventListener("change", redraw);
     heightInput.addEventListener("change", redraw);
