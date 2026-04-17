@@ -462,6 +462,28 @@
         ctx.fillRect(x, y, w, h);
         ctx.restore();
       }
+
+      if (activeTool === "select" && selectedSegmentIndices.size === 1) {
+        const index = Array.from(selectedSegmentIndices)[0];
+        const seg = segments[index];
+        if (seg) {
+          const a = gridToCanvas(seg.a);
+          const b = gridToCanvas(seg.b);
+          ctx.save();
+          ctx.fillStyle = "#1479ff";
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
     }
 
     function redraw() {
@@ -554,6 +576,28 @@
       return false;
     }
 
+    function deleteSelectedSegments() {
+      if (selectedSegmentIndices.size === 0) {
+        return 0;
+      }
+
+      const indices = Array.from(selectedSegmentIndices).sort((a, b) => b - a);
+      for (let i = 0; i < indices.length; i += 1) {
+        if (indices[i] >= 0 && indices[i] < segments.length) {
+          segments.splice(indices[i], 1);
+        }
+      }
+
+      const removedCount = indices.length;
+      selectedSegmentIndices.clear();
+      isMarqueeSelecting = false;
+      marqueeStartWorld = null;
+      marqueeEndWorld = null;
+      marqueeMode = "replace";
+      dragState = null;
+      return removedCount;
+    }
+
     function getRectFromWorldPoints(a, b) {
       return {
         minX: Math.min(a.x, b.x),
@@ -601,6 +645,32 @@
         }
       }
       return indices;
+    }
+
+    function getSingleSelectedEndpointHit(pointerWorld) {
+      if (selectedSegmentIndices.size !== 1) {
+        return null;
+      }
+      const index = Array.from(selectedSegmentIndices)[0];
+      const seg = segments[index];
+      if (!seg) {
+        return null;
+      }
+
+      const toleranceWorld = Math.max(0.2, 10 / Math.max(gridPx, 1));
+      const dA = Math.hypot(pointerWorld.x - seg.a.x, pointerWorld.y - seg.a.y);
+      const dB = Math.hypot(pointerWorld.x - seg.b.x, pointerWorld.y - seg.b.y);
+      const minD = Math.min(dA, dB);
+
+      if (minD > toleranceWorld) {
+        return null;
+      }
+
+      return {
+        index,
+        endpoint: dA <= dB ? "a" : "b",
+        startPoint: clonePoint(dA <= dB ? seg.a : seg.b)
+      };
     }
 
     function projectDoorEndpoint(start, pointer) {
@@ -1972,6 +2042,20 @@
         const hitIndex = findNearestSegmentIndex(pointerGrid, () => true);
         const addMode = event.shiftKey;
         const removeMode = event.ctrlKey;
+        const endpointHit = !addMode && !removeMode ? getSingleSelectedEndpointHit(pointerWorld) : null;
+
+        if (endpointHit) {
+          dragState = {
+            mode: "move-endpoint",
+            index: endpointHit.index,
+            endpoint: endpointHit.endpoint,
+            startPointer: clonePoint(pointerGrid),
+            startPoint: endpointHit.startPoint
+          };
+          status.textContent = "Drag endpoint to reshape line.";
+          redraw();
+          return;
+        }
 
         if (hitIndex >= 0 && !addMode && !removeMode) {
           if (!selectedSegmentIndices.has(hitIndex)) {
@@ -1981,6 +2065,7 @@
 
           const selected = Array.from(selectedSegmentIndices);
           dragState = {
+            mode: "move-selection",
             indices: selected,
             startPointer: clonePoint(pointerGrid),
             originals: selected.map(idx => ({
@@ -2080,16 +2165,34 @@
         const dx = pointerGrid.x - dragState.startPointer.x;
         const dy = pointerGrid.y - dragState.startPointer.y;
 
-        for (let i = 0; i < dragState.originals.length; i += 1) {
-          const original = dragState.originals[i];
-          const seg = segments[original.index];
+        if (dragState.mode === "move-endpoint") {
+          const seg = segments[dragState.index];
           if (!seg) {
-            continue;
+            redraw();
+            return;
           }
-          seg.a.x = original.a.x + dx;
-          seg.a.y = original.a.y + dy;
-          seg.b.x = original.b.x + dx;
-          seg.b.y = original.b.y + dy;
+
+          const movedX = dragState.startPoint.x + dx;
+          const movedY = dragState.startPoint.y + dy;
+          if (dragState.endpoint === "a") {
+            seg.a.x = movedX;
+            seg.a.y = movedY;
+          } else {
+            seg.b.x = movedX;
+            seg.b.y = movedY;
+          }
+        } else {
+          for (let i = 0; i < dragState.originals.length; i += 1) {
+            const original = dragState.originals[i];
+            const seg = segments[original.index];
+            if (!seg) {
+              continue;
+            }
+            seg.a.x = original.a.x + dx;
+            seg.a.y = original.a.y + dy;
+            seg.b.x = original.b.x + dx;
+            seg.b.y = original.b.y + dy;
+          }
         }
       }
 
@@ -2131,7 +2234,11 @@
 
           status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
         } else if (dragState) {
-          status.textContent = `Moved ${selectedSegmentIndices.size} line(s).`;
+          if (dragState.mode === "move-endpoint") {
+            status.textContent = "Line endpoint moved.";
+          } else {
+            status.textContent = `Moved ${selectedSegmentIndices.size} line(s).`;
+          }
         }
 
         isMarqueeSelecting = false;
@@ -2233,7 +2340,14 @@
       }
 
       const key = event.key.toLowerCase();
-      if (key === "w") {
+      if (key === "delete" || key === "backspace") {
+        if (selectedSegmentIndices.size > 0) {
+          event.preventDefault();
+          const removedCount = deleteSelectedSegments();
+          status.textContent = `Removed ${removedCount} selected line(s).`;
+          redraw();
+        }
+      } else if (key === "w") {
         event.preventDefault();
         cycleToolGroup(["wall", "halfwall", "fakewall", "box"], "W group");
       } else if (key === "s") {
