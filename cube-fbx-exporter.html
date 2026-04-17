@@ -54,6 +54,26 @@
       margin-bottom: 10px;
     }
 
+    .props-toggle {
+      background: #eaf2ff;
+      color: #21406e;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .export-props-panel {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .export-props-panel.hidden {
+      display: none;
+    }
+
     .toolbar-tools {
       margin-bottom: 14px;
     }
@@ -61,7 +81,7 @@
     .meta {
       color: var(--muted);
       font-size: 0.9rem;
-      margin-left: auto;
+      margin-left: 8px;
     }
 
     .field {
@@ -185,27 +205,34 @@
 </head>
 <body>
   <main class="card">
-    <h1>Floor Plan to Walls GLB</h1>
-    <p>Draw line segments snapped to a 0.25 grid. Export creates clean wall geometry from those segments.</p>
-
     <div class="toolbar-top">
       <button id="exportBtn" type="button">Export Walls GLB</button>
       <button id="saveBtn" type="button" class="secondary">Save Plan</button>
       <button id="loadBtn" type="button" class="secondary">Load Plan</button>
+      <button id="undoBtn" type="button" class="secondary">Undo</button>
+      <button id="redoBtn" type="button" class="secondary">Redo</button>
       <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
-      <label class="field">Thickness
-        <input id="thicknessInput" type="number" min="0.01" step="0.125" value="0.125" />
-      </label>
-      <label class="field">Height
-        <input id="heightInput" type="number" min="0.25" step="0.25" value="2.5" />
-      </label>
-      <label class="field">Join
-        <select id="joinModeSelect">
-          <option value="miter">Miter</option>
-          <option value="bevel">Bevel</option>
-        </select>
-      </label>
-      <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
+      <button id="exportPropsToggleBtn" type="button" class="secondary props-toggle" aria-expanded="false">Show Export Properties</button>
+      <div id="exportPropsPanel" class="export-props-panel hidden">
+        <label class="field">Thickness
+          <input id="thicknessInput" type="number" min="0.01" step="0.125" value="0.125" />
+        </label>
+        <label class="field">Height
+          <input id="heightInput" type="number" min="0.25" step="0.25" value="2.5" />
+        </label>
+        <label class="field">Join
+          <select id="joinModeSelect">
+            <option value="miter">Miter</option>
+            <option value="bevel">Bevel</option>
+          </select>
+        </label>
+        <label class="field">Door Height
+          <input id="doorHeightInput" type="number" min="0.25" step="0.25" value="2" />
+        </label>
+        <label class="field">Window Gap
+          <input id="windowGapInput" type="number" min="0.1" step="0.1" value="0.5" />
+        </label>
+      </div>
     </div>
 
     <div class="toolbar-tools">
@@ -214,11 +241,10 @@
       <button id="toolFakeWallBtn" type="button" class="secondary tool">Fake Wall Tool</button>
       <button id="toolBoxBtn" type="button" class="secondary tool">Box Tool</button>
       <button id="toolDoorBtn" type="button" class="secondary tool">Door Tool</button>
+      <button id="toolWindowBtn" type="button" class="secondary tool">Window Tool</button>
       <button id="toolCutBtn" type="button" class="secondary tool">Cut Tool</button>
       <button id="toolSelectBtn" type="button" class="secondary tool">Select/Move</button>
       <button id="toolEraseBtn" type="button" class="secondary tool">Remove Wall</button>
-      <button id="undoBtn" type="button" class="secondary">Undo</button>
-      <button id="redoBtn" type="button" class="secondary">Redo</button>
     </div>
 
     <div class="canvas-wrap">
@@ -231,6 +257,7 @@
       <button id="zoomInBtn" type="button" class="secondary">+</button>
       <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
       <span id="zoomReadout" class="zoom-readout">100%</span>
+      <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
     </div>
 
     <div id="status" aria-live="polite"></div>
@@ -242,9 +269,11 @@
     const DEFAULT_GRID_PX = 12;
     const MIN_GRID_PX = 2;
     const MAX_GRID_PX = 36;
+    const LOCAL_UI_STORAGE_KEY = "floor-plan-editor.ui.v1";
     let gridPx = DEFAULT_GRID_PX;
     const DOOR_WIDTH_UNITS = 1;
-    const DOOR_HEAD_HEIGHT_UNITS = 2;
+    const DEFAULT_DOOR_HEAD_HEIGHT_UNITS = 2;
+    const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
 
     const exportButton = document.getElementById("exportBtn");
@@ -259,6 +288,7 @@
     const toolHalfWallButton = document.getElementById("toolHalfWallBtn");
     const toolFakeWallButton = document.getElementById("toolFakeWallBtn");
     const toolDoorButton = document.getElementById("toolDoorBtn");
+    const toolWindowButton = document.getElementById("toolWindowBtn");
     const toolCutButton = document.getElementById("toolCutBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
@@ -269,6 +299,10 @@
     const thicknessInput = document.getElementById("thicknessInput");
     const heightInput = document.getElementById("heightInput");
     const joinModeSelect = document.getElementById("joinModeSelect");
+    const doorHeightInput = document.getElementById("doorHeightInput");
+    const windowGapInput = document.getElementById("windowGapInput");
+    const exportPropsToggleButton = document.getElementById("exportPropsToggleBtn");
+    const exportPropsPanel = document.getElementById("exportPropsPanel");
     const status = document.getElementById("status");
     const meta = document.getElementById("meta");
     const canvas = document.getElementById("planCanvas");
@@ -296,6 +330,7 @@
     let localSaveTimer = null;
     let undoSnapshot = null;
     let redoSnapshot = null;
+    let isExportPropsOpen = false;
 
     const toolButtons = {
       wall: toolWallButton,
@@ -303,6 +338,7 @@
       halfwall: toolHalfWallButton,
       fakewall: toolFakeWallButton,
       door: toolDoorButton,
+      window: toolWindowButton,
       cut: toolCutButton,
       select: toolSelectButton,
       erase: toolEraseButton
@@ -316,12 +352,51 @@
       return Math.max(min, parsed);
     }
 
+    function saveUiState() {
+      try {
+        localStorage.setItem(LOCAL_UI_STORAGE_KEY, JSON.stringify({
+          isExportPropsOpen
+        }));
+      } catch (error) {
+        console.warn("Failed to save UI state.", error);
+      }
+    }
+
+    function loadUiState() {
+      try {
+        const raw = localStorage.getItem(LOCAL_UI_STORAGE_KEY);
+        if (!raw) {
+          isExportPropsOpen = false;
+          return;
+        }
+        const data = JSON.parse(raw);
+        isExportPropsOpen = !!(data && data.isExportPropsOpen);
+      } catch (error) {
+        console.warn("Failed to load UI state.", error);
+        isExportPropsOpen = false;
+      }
+    }
+
+    function applyExportPropsVisibility() {
+      exportPropsPanel.classList.toggle("hidden", !isExportPropsOpen);
+      exportPropsToggleButton.setAttribute("aria-expanded", isExportPropsOpen ? "true" : "false");
+      exportPropsToggleButton.textContent = isExportPropsOpen ? "Hide Export Properties" : "Show Export Properties";
+    }
+
     function getWallThickness() {
       return clampNumber(thicknessInput.value, 0.125, 0.01);
     }
 
     function getWallHeight() {
       return clampNumber(heightInput.value, 2.5, 0.25);
+    }
+
+    function getDoorHeadHeight() {
+      return clampNumber(doorHeightInput.value, DEFAULT_DOOR_HEAD_HEIGHT_UNITS, 0.25);
+    }
+
+    function getWindowOpeningGap() {
+      return clampNumber(windowGapInput.value, DEFAULT_WINDOW_OPENING_GAP_UNITS, 0.1);
     }
 
     function gridToCanvas(point) {
@@ -400,6 +475,8 @@
         ctx.lineWidth = selectedSegmentIndices.has(i) ? 4 : 3;
         if (seg.type === "door") {
           ctx.strokeStyle = "#d97706";
+        } else if (seg.type === "window") {
+          ctx.strokeStyle = "#0891b2";
         } else if (seg.type === "halfwall") {
           ctx.strokeStyle = "#0e7490";
         } else if (seg.type === "fakewall") {
@@ -417,7 +494,7 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box")) {
         if (activeTool === "box") {
           const minX = Math.min(startGrid.x, pointerGrid.x);
           const maxX = Math.max(startGrid.x, pointerGrid.x);
@@ -447,6 +524,8 @@
           ctx.lineWidth = 3;
           if (activeTool === "door") {
             ctx.strokeStyle = "#d97706";
+          } else if (activeTool === "window") {
+            ctx.strokeStyle = "#0891b2";
           } else if (activeTool === "halfwall") {
             ctx.strokeStyle = "#0e7490";
           } else if (activeTool === "fakewall") {
@@ -521,11 +600,14 @@
     function updateMeta() {
       const wallHeight = getWallHeight().toFixed(2);
       const wallThickness = getWallThickness().toFixed(2);
+      const doorHeight = getDoorHeadHeight().toFixed(2);
+      const windowGap = getWindowOpeningGap().toFixed(2);
       const wallCount = segments.filter(seg => seg.type === "wall").length;
       const fakeWallCount = segments.filter(seg => seg.type === "fakewall").length;
       const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount}`;
+      const windowCount = segments.filter(seg => seg.type === "window").length;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -1075,7 +1157,7 @@
 
     function splitExistingSegmentsAtIntersections(newA, newB) {
       const eps = 1e-6;
-      const cuttable = new Set(["wall", "halfwall", "fakewall", "door"]);
+      const cuttable = new Set(["wall", "halfwall", "fakewall", "door", "window"]);
 
       for (let i = segments.length - 1; i >= 0; i -= 1) {
         const seg = segments[i];
@@ -1249,7 +1331,9 @@
         settings: {
           thickness: getWallThickness(),
           height: getWallHeight(),
-          joinMode: joinModeSelect.value
+          joinMode: joinModeSelect.value,
+          doorHeight: getDoorHeadHeight(),
+          windowGap: getWindowOpeningGap()
         },
         view: {
           gridPx,
@@ -1306,7 +1390,7 @@
         throw new Error("Invalid plan file.");
       }
 
-      const allowedTypes = new Set(["wall", "halfwall", "fakewall", "door"]);
+      const allowedTypes = new Set(["wall", "halfwall", "fakewall", "door", "window"]);
 
       segments.length = 0;
       for (let i = 0; i < data.segments.length; i += 1) {
@@ -1344,6 +1428,12 @@
         }
         if (data.settings.joinMode === "miter" || data.settings.joinMode === "bevel") {
           joinModeSelect.value = data.settings.joinMode;
+        }
+        if (Number.isFinite(Number(data.settings.doorHeight))) {
+          doorHeightInput.value = String(data.settings.doorHeight);
+        }
+        if (Number.isFinite(Number(data.settings.windowGap))) {
+          windowGapInput.value = String(data.settings.windowGap);
         }
       }
 
@@ -1791,6 +1881,8 @@
       const thickness = getWallThickness();
       const slabThickness = thickness * 0.5;
       const height = getWallHeight();
+      const doorHeadHeight = getDoorHeadHeight();
+      const windowOpeningGap = getWindowOpeningGap();
       const joinMode = joinModeSelect.value;
       const half = thickness / 2;
 
@@ -2057,28 +2149,10 @@
         }
       }
 
-      for (let i = 0; i < worldSegments.length; i += 1) {
-        const seg = worldSegments[i];
-        const startNode = nodes.get(nodeKey(seg.a));
-        const endNode = nodes.get(nodeKey(seg.b));
-        const segType = seg.type || "wall";
-        let baseY = 0;
-        let topY = height;
-
-        if (segType === "fakewall") {
-          continue;
-        }
-
-        if (segType === "door") {
-          baseY = Math.min(DOOR_HEAD_HEIGHT_UNITS, height);
-        } else if (segType === "halfwall") {
-          topY = height * HALF_WALL_HEIGHT_FACTOR;
-        }
-
+      function addSegmentPrism(seg, startNode, endNode, baseY, topY) {
         if (topY - baseY <= 1e-6) {
-          continue;
+          return;
         }
-
         const sLeft = vec2Add(seg.a, computeJoinOffset(startNode, seg.dir, 1));
         const sRight = vec2Add(seg.a, computeJoinOffset(startNode, seg.dir, -1));
         const endOut = vec2Scale(seg.dir, -1);
@@ -2113,7 +2187,43 @@
         }
       }
 
-      const closureSegments = worldSegments.filter(seg => (seg.type || "wall") !== "halfwall" && (seg.type || "wall") !== "door");
+      for (let i = 0; i < worldSegments.length; i += 1) {
+        const seg = worldSegments[i];
+        const startNode = nodes.get(nodeKey(seg.a));
+        const endNode = nodes.get(nodeKey(seg.b));
+        const segType = seg.type || "wall";
+
+        if (segType === "fakewall") {
+          continue;
+        }
+
+        if (segType === "door") {
+          const baseY = Math.min(doorHeadHeight, height);
+          addSegmentPrism(seg, startNode, endNode, baseY, height);
+          continue;
+        }
+
+        if (segType === "halfwall") {
+          addSegmentPrism(seg, startNode, endNode, 0, height * HALF_WALL_HEIGHT_FACTOR);
+          continue;
+        }
+
+        if (segType === "window") {
+          const gap = Math.max(0, windowOpeningGap);
+          if (height <= gap + 1e-6) {
+            continue;
+          }
+          const lowerTop = (height - gap) * 0.5;
+          const upperBottom = lowerTop + gap;
+          addSegmentPrism(seg, startNode, endNode, 0, lowerTop);
+          addSegmentPrism(seg, startNode, endNode, upperBottom, height);
+          continue;
+        }
+
+        addSegmentPrism(seg, startNode, endNode, 0, height);
+      }
+
+      const closureSegments = worldSegments.filter(seg => (seg.type || "wall") !== "halfwall" && (seg.type || "wall") !== "door" && (seg.type || "wall") !== "window");
       const sealedFaces = extractBoundedFacesFromSegments(closureSegments);
       for (let i = 0; i < sealedFaces.length; i += 1) {
         const poly = sealedFaces[i];
@@ -2397,7 +2507,7 @@
       }
 
       if (activeTool === "cut") {
-        const index = findNearestSegmentIndex(pointerWorld, seg => seg.type === "wall" || seg.type === "halfwall" || seg.type === "fakewall");
+        const index = findNearestSegmentIndex(pointerWorld, seg => seg.type === "wall" || seg.type === "halfwall" || seg.type === "fakewall" || seg.type === "window");
         if (index >= 0) {
           if (splitSegmentAtPoint(index, pointerWorld)) {
             status.textContent = "Segment cut into two parts.";
@@ -2569,6 +2679,12 @@
         const doorB = carved ? carved.b : { x: doorEnd.x, y: doorEnd.y };
         addSegmentWithCuts("door", doorA, doorB);
         status.textContent = `Door added (width ${DOOR_WIDTH_UNITS}). Total segments: ${segments.length}`;
+      } else if (activeTool === "window" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
+        const carved = carveDoorIntoWall(startGrid, endGrid);
+        const windowA = carved ? carved.a : { x: startGrid.x, y: startGrid.y };
+        const windowB = carved ? carved.b : { x: endGrid.x, y: endGrid.y };
+        addSegmentWithCuts("window", windowA, windowB);
+        status.textContent = `Window added (gap ${getWindowOpeningGap()}). Total segments: ${segments.length}`;
       } else if (activeTool === "box") {
         const minX = Math.min(startGrid.x, endGrid.x);
         const maxX = Math.max(startGrid.x, endGrid.x);
@@ -2680,7 +2796,7 @@
         cycleToolGroup(["select", "erase"], "S group");
       } else if (key === "d") {
         event.preventDefault();
-        cycleToolGroup(["door", "cut"], "D group");
+        cycleToolGroup(["door", "window", "cut"], "D group");
       }
     });
 
@@ -2734,6 +2850,7 @@
     toolHalfWallButton.addEventListener("click", () => setTool("halfwall"));
     toolFakeWallButton.addEventListener("click", () => setTool("fakewall"));
     toolDoorButton.addEventListener("click", () => setTool("door"));
+    toolWindowButton.addEventListener("click", () => setTool("window"));
     toolCutButton.addEventListener("click", () => setTool("cut"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
@@ -2754,10 +2871,27 @@
       queueLocalAutosave();
       redraw();
     });
+    doorHeightInput.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
+    windowGapInput.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
 
     exportButton.addEventListener("click", () => {
       exportWallsAsGlb();
     });
+
+    exportPropsToggleButton.addEventListener("click", () => {
+      isExportPropsOpen = !isExportPropsOpen;
+      applyExportPropsVisibility();
+      saveUiState();
+    });
+
+    loadUiState();
+    applyExportPropsVisibility();
 
     const hasAutosavedPlan = loadProjectFromLocalStorage();
     if (hasAutosavedPlan) {
