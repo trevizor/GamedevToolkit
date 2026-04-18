@@ -3,6 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js" crossorigin="anonymous" />
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js" crossorigin="anonymous" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js"
+      }
+    }
+  </script>
   <title>Floor Plan Wall GLB Exporter</title>
   <style>
     :root {
@@ -296,6 +305,72 @@
       cursor: crosshair;
       background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
     }
+
+    .preview3d-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 34, 0.66);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .preview3d-overlay.hidden {
+      display: none;
+    }
+
+    .preview3d-card {
+      width: min(1100px, 96vw);
+      height: min(760px, 90vh);
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      box-shadow: 0 18px 40px rgba(15, 35, 65, 0.24);
+    }
+
+    .preview3d-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: #f7fbff;
+    }
+
+    .preview3d-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #21406e;
+      letter-spacing: 0.02em;
+    }
+
+    .preview3d-hint {
+      font-size: 0.82rem;
+      color: #4a607d;
+      margin-left: 8px;
+      font-weight: 500;
+    }
+
+    .preview3d-canvas-wrap {
+      width: 100%;
+      height: 100%;
+      background: #eaf2ff;
+      position: relative;
+    }
+
+    #preview3dCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+      background: linear-gradient(180deg, #f4f9ff 0%, #dce9ff 100%);
+    }
   </style>
 </head>
 <body>
@@ -305,6 +380,7 @@
         <input id="planTitleInput" class="plan-title" type="text" maxlength="120" value="Untitled" />
       </label>
       <button id="exportBtn" type="button">Export Model</button>
+      <button id="preview3dBtn" type="button" class="secondary">Preview 3D</button>
       <button id="saveBtn" type="button" class="secondary">Save Plan</button>
       <button id="loadBtn" type="button" class="secondary">Load Plan</button>
       <button id="undoBtn" type="button" class="secondary">Undo</button>
@@ -388,11 +464,28 @@
     <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
   </main>
 
+  <div id="preview3dOverlay" class="preview3d-overlay hidden" aria-hidden="true">
+    <div class="preview3d-card" role="dialog" aria-label="3D model preview">
+      <div class="preview3d-topbar">
+        <div>
+          <span class="preview3d-title">3D Model Preview</span>
+          <span class="preview3d-hint">Drag to orbit, wheel to zoom, right-click drag to pan</span>
+        </div>
+        <button id="preview3dCloseBtn" type="button" class="secondary">Close</button>
+      </div>
+      <div class="preview3d-canvas-wrap">
+        <canvas id="preview3dCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
   <script>
     const GRID_SIZE_UNITS = 0.25;
     const DEFAULT_GRID_PX = 12;
     const MIN_GRID_PX = 2;
     const MAX_GRID_PX = 36;
+    const THREE_MODULE_URL = "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
+    const ORBIT_CONTROLS_MODULE_URL = "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js";
     const LOCAL_UI_STORAGE_KEY = "floor-plan-editor.ui.v1";
     let gridPx = DEFAULT_GRID_PX;
     const DOOR_WIDTH_UNITS = 1;
@@ -401,6 +494,7 @@
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
 
     const exportButton = document.getElementById("exportBtn");
+    const preview3dButton = document.getElementById("preview3dBtn");
     const slabPreviewToggleButton = document.getElementById("slabPreviewToggleBtn");
     const saveButton = document.getElementById("saveBtn");
     const loadButton = document.getElementById("loadBtn");
@@ -440,6 +534,9 @@
     const meta = document.getElementById("meta");
     const canvas = document.getElementById("planCanvas");
     const ctx = canvas.getContext("2d");
+    const preview3dOverlay = document.getElementById("preview3dOverlay");
+    const preview3dCloseButton = document.getElementById("preview3dCloseBtn");
+    const preview3dCanvas = document.getElementById("preview3dCanvas");
 
     function createLevel(name, levelSegments) {
       return {
@@ -477,6 +574,9 @@
     let isSlabPreviewVisible = false;
     let isOnionViewEnabled = true;
     let ellipseForceCircle = false;
+    let preview3dRuntime = null;
+    let preview3dAnimationId = null;
+    let preview3dResizeHandler = null;
 
     function getCurrentLevel() {
       return floors[currentLevelIndex];
@@ -2870,6 +2970,48 @@
       return glb;
     }
 
+    function buildCombinedWallsMeshData() {
+      const floorStride = getWallHeight() + getWallThickness() * 0.5;
+      const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
+
+      for (let i = 0; i < floors.length; i += 1) {
+        const floor = floors[i];
+        if (!floor.segments || floor.segments.length === 0) {
+          continue;
+        }
+
+        const floorMesh = buildWallMeshData(
+          floor.segments,
+          i * floorStride,
+          floor.name || buildLevelDefaultName(i)
+        );
+
+        if (floorMesh.vertices.length === 0 || floorMesh.faces.length === 0) {
+          continue;
+        }
+
+        const vertexOffset = meshData.vertices.length;
+        for (let v = 0; v < floorMesh.vertices.length; v += 1) {
+          meshData.vertices.push(floorMesh.vertices[v]);
+        }
+        for (let f = 0; f < floorMesh.faces.length; f += 1) {
+          const face = floorMesh.faces[f];
+          meshData.faces.push([
+            face[0] + vertexOffset,
+            face[1] + vertexOffset,
+            face[2] + vertexOffset
+          ]);
+          meshData.faceGroups.push(
+            floorMesh.faceGroups && floorMesh.faceGroups[f]
+              ? floorMesh.faceGroups[f]
+              : "walls"
+          );
+        }
+      }
+
+      return meshData;
+    }
+
     function exportWallsAsGlb() {
       const hasAnySegments = floors.some(floor => floor.segments.length > 0);
       if (!hasAnySegments) {
@@ -2880,43 +3022,7 @@
       status.textContent = "Building wall geometry and exporting GLB...";
 
       try {
-        const floorStride = getWallHeight() + getWallThickness() * 0.5;
-        const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
-
-        for (let i = 0; i < floors.length; i += 1) {
-          const floor = floors[i];
-          if (!floor.segments || floor.segments.length === 0) {
-            continue;
-          }
-
-          const floorMesh = buildWallMeshData(
-            floor.segments,
-            i * floorStride,
-            floor.name || buildLevelDefaultName(i)
-          );
-
-          if (floorMesh.vertices.length === 0 || floorMesh.faces.length === 0) {
-            continue;
-          }
-
-          const vertexOffset = meshData.vertices.length;
-          for (let v = 0; v < floorMesh.vertices.length; v += 1) {
-            meshData.vertices.push(floorMesh.vertices[v]);
-          }
-          for (let f = 0; f < floorMesh.faces.length; f += 1) {
-            const face = floorMesh.faces[f];
-            meshData.faces.push([
-              face[0] + vertexOffset,
-              face[1] + vertexOffset,
-              face[2] + vertexOffset
-            ]);
-            meshData.faceGroups.push(
-              floorMesh.faceGroups && floorMesh.faceGroups[f]
-                ? floorMesh.faceGroups[f]
-                : "walls"
-            );
-          }
-        }
+        const meshData = buildCombinedWallsMeshData();
 
         if (meshData.vertices.length === 0 || meshData.faces.length === 0) {
           status.textContent = "No geometry generated. Check wall settings and plan lines.";
@@ -2930,6 +3036,161 @@
       } catch (error) {
         console.error(error);
         status.textContent = "Failed to export walls GLB. Check browser console for details.";
+      }
+    }
+
+    async function ensurePreview3dRuntime() {
+      if (preview3dRuntime) {
+        return preview3dRuntime;
+      }
+
+      const THREE = await import(THREE_MODULE_URL);
+      const { OrbitControls } = await import(ORBIT_CONTROLS_MODULE_URL);
+      preview3dRuntime = { THREE, OrbitControls };
+      return preview3dRuntime;
+    }
+
+    function preloadPreview3dRuntime() {
+      ensurePreview3dRuntime().catch(error => {
+        console.warn("Failed to preload 3D preview runtime.", error);
+      });
+    }
+
+    function stopPreview3dLoop() {
+      if (preview3dAnimationId !== null) {
+        cancelAnimationFrame(preview3dAnimationId);
+        preview3dAnimationId = null;
+      }
+      if (preview3dResizeHandler) {
+        window.removeEventListener("resize", preview3dResizeHandler);
+        preview3dResizeHandler = null;
+      }
+      if (preview3dCanvas.__preview3dState) {
+        const state = preview3dCanvas.__preview3dState;
+        if (state.controls) {
+          state.controls.dispose();
+        }
+        if (state.renderer) {
+          state.renderer.dispose();
+        }
+      }
+      preview3dCanvas.__preview3dState = null;
+    }
+
+    function closePreview3d() {
+      stopPreview3dLoop();
+      preview3dOverlay.classList.add("hidden");
+      preview3dOverlay.setAttribute("aria-hidden", "true");
+    }
+
+    async function openPreview3d() {
+      const hasAnySegments = floors.some(floor => floor.segments.length > 0);
+      if (!hasAnySegments) {
+        status.textContent = "Draw at least one line before opening 3D preview.";
+        return;
+      }
+
+      const meshData = buildCombinedWallsMeshData();
+      if (meshData.vertices.length === 0 || meshData.faces.length === 0) {
+        status.textContent = "No geometry generated. Check wall settings and plan lines.";
+        return;
+      }
+
+      status.textContent = "Building 3D preview...";
+
+      try {
+        const { THREE, OrbitControls } = await ensurePreview3dRuntime();
+
+        stopPreview3dLoop();
+        preview3dOverlay.classList.remove("hidden");
+        preview3dOverlay.setAttribute("aria-hidden", "false");
+
+        const renderer = new THREE.WebGLRenderer({ canvas: preview3dCanvas, antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xe9f2ff);
+
+        const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 5000);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.target.set(0, 0, 0);
+
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x9fb7d1, 0.95);
+        scene.add(hemi);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+        dir.position.set(8, 14, 10);
+        scene.add(dir);
+
+        const vertices = new Float32Array(meshData.vertices.length * 3);
+        for (let i = 0; i < meshData.vertices.length; i += 1) {
+          vertices[i * 3 + 0] = meshData.vertices[i][0];
+          vertices[i * 3 + 1] = meshData.vertices[i][1];
+          vertices[i * 3 + 2] = meshData.vertices[i][2];
+        }
+        const indices = new Uint32Array(meshData.faces.length * 3);
+        for (let i = 0; i < meshData.faces.length; i += 1) {
+          indices[i * 3 + 0] = meshData.faces[i][0];
+          indices[i * 3 + 1] = meshData.faces[i][1];
+          indices[i * 3 + 2] = meshData.faces[i][2];
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshStandardMaterial({ color: 0xc4cbd6, roughness: 1, metalness: 0 });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        const gridHelper = new THREE.GridHelper(40, 80, 0x8da3be, 0xc7d7ea);
+        gridHelper.position.y = 0;
+        scene.add(gridHelper);
+
+        const bbox = new THREE.Box3().setFromObject(mesh);
+        const size = bbox.getSize(new THREE.Vector3());
+        const center = bbox.getCenter(new THREE.Vector3());
+        const radius = Math.max(size.x, size.y, size.z, 1);
+
+        controls.target.copy(center);
+        camera.position.set(center.x + radius * 1.3, center.y + radius * 1.1, center.z + radius * 1.3);
+        camera.near = Math.max(0.01, radius / 200);
+        camera.far = Math.max(100, radius * 50);
+        camera.updateProjectionMatrix();
+
+        function resizeRenderer() {
+          const rect = preview3dCanvas.getBoundingClientRect();
+          const width = Math.max(1, Math.floor(rect.width));
+          const height = Math.max(1, Math.floor(rect.height));
+          renderer.setSize(width, height, false);
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
+
+        resizeRenderer();
+        preview3dResizeHandler = resizeRenderer;
+        window.addEventListener("resize", preview3dResizeHandler);
+
+        preview3dCanvas.__preview3dState = { renderer, scene, camera, controls };
+
+        const animate = () => {
+          const state = preview3dCanvas.__preview3dState;
+          if (!state) {
+            return;
+          }
+          state.controls.update();
+          state.renderer.render(state.scene, state.camera);
+          preview3dAnimationId = requestAnimationFrame(animate);
+        };
+        animate();
+
+        status.textContent = `3D preview ready. Vertices: ${meshData.vertices.length}, Triangles: ${meshData.faces.length}`;
+      } catch (error) {
+        console.error(error);
+        closePreview3d();
+        status.textContent = "Failed to open 3D preview. Check browser console for details.";
       }
     }
 
@@ -3461,6 +3722,22 @@
       exportWallsAsGlb();
     });
 
+    preview3dButton.addEventListener("click", () => {
+      openPreview3d();
+    });
+
+    preview3dCloseButton.addEventListener("click", () => {
+      closePreview3d();
+      status.textContent = "3D preview closed.";
+    });
+
+    preview3dOverlay.addEventListener("click", event => {
+      if (event.target === preview3dOverlay) {
+        closePreview3d();
+        status.textContent = "3D preview closed.";
+      }
+    });
+
     slabPreviewToggleButton.addEventListener("click", () => {
       isSlabPreviewVisible = !isSlabPreviewVisible;
       updateSlabPreviewToggleButton();
@@ -3484,6 +3761,7 @@
     });
 
     loadUiState();
+    preloadPreview3dRuntime();
     setPlanTitle(planTitle);
     updateOnionToggleButton();
     updateSlabPreviewToggleButton();
