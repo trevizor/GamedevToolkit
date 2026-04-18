@@ -432,6 +432,7 @@
       <div class="tool-group" aria-label="F group tools">
         <button id="toolFloorBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Floor Box</button>
         <button id="toolCeilingBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Ceiling Box</button>
+        <button id="toolHalfWallBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Half Wall Box</button>
       </div>
       <div class="tool-group" aria-label="S group tools">
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
@@ -524,6 +525,7 @@
     const toolCutButton = document.getElementById("toolCutBtn");
     const toolFloorBoxButton = document.getElementById("toolFloorBoxBtn");
     const toolCeilingBoxButton = document.getElementById("toolCeilingBoxBtn");
+    const toolHalfWallBoxButton = document.getElementById("toolHalfWallBoxBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
@@ -697,6 +699,7 @@
       cut: toolCutButton,
       floorbox: toolFloorBoxButton,
       ceilingbox: toolCeilingBoxButton,
+      halfwallbox: toolHalfWallBoxButton,
       select: toolSelectButton,
       erase: toolEraseButton
     };
@@ -994,6 +997,9 @@
       if (type === "ceiling") {
         return isCeilingBoxesVisible;
       }
+      if (type === "halfwall") {
+        return isFloorBoxesVisible;
+      }
       return isFloorBoxesVisible;
     }
 
@@ -1130,12 +1136,16 @@
           continue;
         }
 
-        const fill = (box.type === "ceiling")
+        const fill = box.type === "ceiling"
           ? (isCurrent ? "rgba(59,130,246,0.18)" : "rgba(147,197,253,0.16)")
-          : (isCurrent ? "rgba(16,185,129,0.18)" : "rgba(110,231,183,0.16)");
-        const stroke = (box.type === "ceiling")
+          : box.type === "halfwall"
+            ? (isCurrent ? "rgba(14,116,144,0.18)" : "rgba(103,232,249,0.14)")
+            : (isCurrent ? "rgba(16,185,129,0.18)" : "rgba(110,231,183,0.16)");
+        const stroke = box.type === "ceiling"
           ? (isCurrent ? "#2563eb" : "#93c5fd")
-          : (isCurrent ? "#059669" : "#6ee7b7");
+          : box.type === "halfwall"
+            ? (isCurrent ? "#0e7490" : "#67e8f9")
+            : (isCurrent ? "#059669" : "#6ee7b7");
 
         ctx.beginPath();
         const p0 = gridToCanvas(corners[0]);
@@ -1164,7 +1174,7 @@
       const sy = Math.max(1, maxY - minY);
 
       return {
-        type: type === "ceiling" ? "ceiling" : "floor",
+        type: type === "ceiling" ? "ceiling" : type === "halfwall" ? "halfwall" : "floor",
         cx: (minX + maxX) * 0.5,
         cy: (minY + maxY) * 0.5,
         sx,
@@ -1302,7 +1312,7 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
           if (points.length >= 3) {
@@ -1342,12 +1352,17 @@
             ctx.lineTo(b.x, b.y);
             ctx.stroke();
           }
-        } else if (activeTool === "floorbox" || activeTool === "ceilingbox") {
-          const previewBox = createSlabBoxFromDrag(activeTool === "ceilingbox" ? "ceiling" : "floor", startGrid, pointerGrid);
+        } else if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
+          const previewType = activeTool === "ceilingbox"
+            ? "ceiling"
+            : activeTool === "halfwallbox"
+              ? "halfwall"
+              : "floor";
+          const previewBox = createSlabBoxFromDrag(previewType, startGrid, pointerGrid);
           const corners = getSlabBoxCorners(previewBox);
           ctx.lineWidth = 2;
-          ctx.strokeStyle = activeTool === "ceilingbox" ? "#2563eb" : "#059669";
-          ctx.fillStyle = activeTool === "ceilingbox" ? "rgba(59,130,246,0.16)" : "rgba(16,185,129,0.16)";
+          ctx.strokeStyle = activeTool === "ceilingbox" ? "#2563eb" : activeTool === "halfwallbox" ? "#0e7490" : "#059669";
+          ctx.fillStyle = activeTool === "ceilingbox" ? "rgba(59,130,246,0.16)" : activeTool === "halfwallbox" ? "rgba(14,116,144,0.16)" : "rgba(16,185,129,0.16)";
           ctx.beginPath();
           const p0 = gridToCanvas(corners[0]);
           ctx.moveTo(p0.x, p0.y);
@@ -1521,7 +1536,8 @@
       const slabBoxes = getCurrentLevel().slabBoxes || [];
       const floorSlabCount = slabBoxes.filter(box => box && box.type === "floor").length;
       const ceilingSlabCount = slabBoxes.filter(box => box && box.type === "ceiling").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount}`;
+      const halfWallSlabCount = slabBoxes.filter(box => box && box.type === "halfwall").length;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount} | Half Wall Boxes: ${halfWallSlabCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -1714,18 +1730,18 @@
         toolButtons[key].classList.toggle("active", key === activeTool);
       });
 
-      if (activeTool === "floorbox") {
+      if (activeTool === "floorbox" || activeTool === "halfwallbox") {
         isFloorBoxesVisible = true;
       }
       if (activeTool === "ceilingbox") {
         isCeilingBoxesVisible = true;
       }
-      if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         updateSlabVisibilityButtons();
         saveUiState();
       }
 
-      if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         status.textContent = `Tool changed to ${activeTool}. Drag to place box. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
       } else {
         status.textContent = `Tool changed to ${activeTool}.`;
@@ -2300,7 +2316,7 @@
           type: seg.type || "wall"
         })),
         slabBoxes: (Array.isArray(floor.slabBoxes) ? floor.slabBoxes : []).map(box => ({
-          type: box.type === "ceiling" ? "ceiling" : "floor",
+          type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
           cx: Number(box.cx),
           cy: Number(box.cy),
           sx: Number(box.sx),
@@ -2428,7 +2444,7 @@
             continue;
           }
           out.push({
-            type: box.type === "ceiling" ? "ceiling" : "floor",
+            type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
             cx,
             cy,
             sx: Math.max(0.001, sx),
@@ -3705,11 +3721,14 @@
             const sx = Number(box.sx) * GRID_SIZE_UNITS;
             const sz = Number(box.sy) * GRID_SIZE_UNITS;
             const rotation = Number(box.rotation) || 0;
-            const type = box.type === "ceiling" ? "ceiling" : "floor";
+            const type = box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor";
 
             if (type === "ceiling") {
               const baseY = levelBaseY + getWallHeight();
               appendSlabBox(cx, cz, sx, sz, baseY, baseY + slabThickness, rotation, "ceiling");
+            } else if (type === "halfwall") {
+              const halfTop = levelBaseY + getWallHeight() * HALF_WALL_HEIGHT_FACTOR;
+              appendSlabBox(cx, cz, sx, sz, halfTop - slabThickness, halfTop, rotation, "walls");
             } else {
               appendSlabBox(cx, cz, sx, sz, levelBaseY - slabThickness, levelBaseY, rotation, "floor");
             }
@@ -4151,7 +4170,7 @@
         return;
       }
 
-      if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         startGrid = clonePoint(pointerGrid);
         drawing = true;
         redraw();
@@ -4402,13 +4421,14 @@
         addWallSegmentWithCut(p2, p3);
         addWallSegmentWithCut(p3, p0);
         status.textContent = `Box added. Total segments: ${segments.length}`;
-      } else if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+      } else if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         const slabBoxes = getCurrentLevelSlabBoxes();
-        const slabType = activeTool === "ceilingbox" ? "ceiling" : "floor";
+        const slabType = activeTool === "ceilingbox" ? "ceiling" : activeTool === "halfwallbox" ? "halfwall" : "floor";
         const slabBox = createSlabBoxFromDrag(slabType, startGrid, endGrid);
         slabBoxes.push(slabBox);
         queueLocalAutosave();
-        status.textContent = `${slabType === "ceiling" ? "Ceiling" : "Floor"} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
+        const slabLabel = slabType === "ceiling" ? "Ceiling" : slabType === "halfwall" ? "Half wall" : "Floor";
+        status.textContent = `${slabLabel} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
       } else if (activeTool === "ellipse") {
         const forceCircle = ellipseForceCircle || event.ctrlKey;
         const addedCount = addEllipseAsWalls(startGrid, endGrid, forceCircle);
@@ -4550,22 +4570,22 @@
         cycleToolGroup(["wall", "halfwall", "box"], "W group");
       } else if (key === "f") {
         event.preventDefault();
-        cycleToolGroup(["floorbox", "ceilingbox"], "F group");
+        cycleToolGroup(["floorbox", "ceilingbox", "halfwallbox"], "F group");
       } else if (key === "s") {
         event.preventDefault();
         cycleToolGroup(["select"], "S group");
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox") && key === "q") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") && key === "q") {
         event.preventDefault();
         slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - 15);
-        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox") && key === "e") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") && key === "e") {
         event.preventDefault();
         slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + 15);
-        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
       }
     });
@@ -4648,6 +4668,7 @@
     toolCutButton.addEventListener("click", () => setTool("cut"));
     toolFloorBoxButton.addEventListener("click", () => setTool("floorbox"));
     toolCeilingBoxButton.addEventListener("click", () => setTool("ceilingbox"));
+    toolHalfWallBoxButton.addEventListener("click", () => setTool("halfwallbox"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 

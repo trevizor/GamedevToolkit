@@ -3,6 +3,8 @@ using UnityEngine;
 
 public class PlanJsonCubeSpawner : MonoBehaviour
 {
+    private const float HALF_WALL_HEIGHT_FACTOR = 0.5f;
+
     [Header("Input")]
     [SerializeField] private TextAsset planJsonFile;
 
@@ -13,6 +15,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private GameObject windowPrefab;
     [SerializeField] private GameObject floorPrefab;
     [SerializeField] private GameObject ceilingPrefab;
+    [SerializeField] private GameObject halfWallSlabPrefab;
 
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
@@ -134,6 +137,9 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         float wallPrefabHeight = Mathf.Max(0.001f, EstimatePrefabHeight(wallPrefab));
         float wallPrefabThickness = Mathf.Max(0f, EstimatePrefabThickness(wallPrefab));
         float slabThickness = Mathf.Max(0.01f, wallPrefabThickness);
+        float wallHeightFromPlan = (plan.settings != null && plan.settings.height > 0f)
+            ? plan.settings.height
+            : wallPrefabHeight;
 
         int spawnedLineCount = 0;
         int spawnedSlabCount = 0;
@@ -151,7 +157,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 }
 
                 SlabBoxData[] slabBoxes = plan.floors[i] != null ? plan.floors[i].slabBoxes : null;
-                spawnedSlabCount += SpawnSlabBoxes(slabBoxes, levelBaseY, grid, wallPrefabHeight, slabThickness);
+                spawnedSlabCount += SpawnSlabBoxes(slabBoxes, levelBaseY, grid, wallHeightFromPlan, slabThickness);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
@@ -229,7 +235,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         SlabBoxData[] slabBoxes,
         float levelBaseY,
         float gridSize,
-        float floorStride,
+        float wallHeight,
         float slabThickness)
     {
         if (slabBoxes == null || slabBoxes.Length == 0)
@@ -250,7 +256,12 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
             string slabType = string.IsNullOrWhiteSpace(box.type) ? "floor" : box.type.Trim().ToLowerInvariant();
             bool isCeiling = slabType == "ceiling";
-            GameObject slabPrefab = isCeiling ? ceilingPrefab : floorPrefab;
+            bool isHalfWall = slabType == "halfwall";
+            GameObject slabPrefab = isCeiling
+                ? ceilingPrefab
+                : isHalfWall
+                    ? (halfWallSlabPrefab != null ? halfWallSlabPrefab : floorPrefab)
+                    : floorPrefab;
             if (slabPrefab == null)
             {
                 continue;
@@ -270,9 +281,20 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            float y = isCeiling
-                ? levelBaseY + floorStride + safeThickness * 0.5f
-                : levelBaseY - safeThickness * 0.5f;
+            float y;
+            if (isCeiling)
+            {
+                y = levelBaseY + wallHeight + safeThickness * 0.5f;
+            }
+            else if (isHalfWall)
+            {
+                float halfWallTop = levelBaseY + wallHeight * HALF_WALL_HEIGHT_FACTOR;
+                y = halfWallTop - safeThickness * 0.5f;
+            }
+            else
+            {
+                y = levelBaseY - safeThickness * 0.5f;
+            }
 
             Vector3 localPos = new Vector3(px, y, pz);
             Quaternion localRot = Quaternion.Euler(0f, box.rotation, 0f);
