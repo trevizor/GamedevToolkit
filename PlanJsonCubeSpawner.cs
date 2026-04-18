@@ -4,6 +4,7 @@ using UnityEngine;
 public class PlanJsonCubeSpawner : MonoBehaviour
 {
     private const float HALF_WALL_HEIGHT_FACTOR = 0.5f;
+    private const float SLAB_Y_OFFSET_FACTOR = 0.1f;
 
     [Header("Input")]
     [SerializeField] private TextAsset planJsonFile;
@@ -295,6 +296,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             {
                 y = levelBaseY - safeThickness * 0.5f;
             }
+
+            y += safeThickness * SLAB_Y_OFFSET_FACTOR;
 
             Vector3 localPos = new Vector3(px, y, pz);
             Quaternion localRot = Quaternion.Euler(0f, box.rotation, 0f);
