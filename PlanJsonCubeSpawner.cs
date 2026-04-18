@@ -12,6 +12,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private GameObject doorPrefab;
     [SerializeField] private GameObject windowPrefab;
     [SerializeField] private GameObject fakeWallPrefab;
+    [SerializeField] private GameObject floorPrefab;
+    [SerializeField] private GameObject ceilingPrefab;
 
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
@@ -43,6 +45,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         public float height;
         public string joinMode;
         public float doorHeight;
+        public float doorWidth;
         public float windowGap;
     }
 
@@ -51,6 +54,18 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     {
         public string name;
         public SegmentData[] segments;
+        public SlabBoxData[] slabBoxes;
+    }
+
+    [Serializable]
+    private class SlabBoxData
+    {
+        public string type;
+        public float cx;
+        public float cy;
+        public float sx;
+        public float sy;
+        public float rotation;
     }
 
     [Serializable]
@@ -118,8 +133,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         float grid = plan.gridSizeUnits > 0f ? plan.gridSizeUnits : defaultGridSizeUnits;
         float wallPrefabHeight = Mathf.Max(0.001f, EstimatePrefabHeight(wallPrefab));
+        float wallPrefabThickness = Mathf.Max(0f, EstimatePrefabThickness(wallPrefab));
+        float slabThickness = Mathf.Max(0.01f, wallPrefabThickness);
 
-        int spawnedCount = 0;
+        int spawnedLineCount = 0;
+        int spawnedSlabCount = 0;
 
         if (plan.floors != null && plan.floors.Length > 0)
         {
@@ -127,34 +145,36 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             for (int i = 0; i < plan.floors.Length; i++)
             {
                 SegmentData[] segments = plan.floors[i] != null ? plan.floors[i].segments : null;
-                if (segments == null || segments.Length == 0)
+                float levelBaseY = i * floorStride;
+                if (segments != null && segments.Length > 0)
                 {
-                    continue;
+                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallPrefabThickness);
                 }
 
-                float levelBaseY = i * floorStride;
-                spawnedCount += SpawnSegments(segments, levelBaseY, grid);
+                SlabBoxData[] slabBoxes = plan.floors[i] != null ? plan.floors[i].slabBoxes : null;
+                spawnedSlabCount += SpawnSlabBoxes(slabBoxes, levelBaseY, grid, wallPrefabHeight, slabThickness);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
         {
-            spawnedCount += SpawnSegments(plan.segments, 0f, grid);
+            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallPrefabThickness);
         }
         else
         {
-            Debug.LogWarning("PlanJsonCubeSpawner: No segments found in JSON.", this);
+            Debug.LogWarning("PlanJsonCubeSpawner: No line segments found in JSON.", this);
         }
 
         if (logBuildSummary)
         {
-            Debug.Log($"PlanJsonCubeSpawner: Spawn complete. Cubes spawned: {spawnedCount}", this);
+            Debug.Log($"PlanJsonCubeSpawner: Spawn complete. Line prefabs: {spawnedLineCount}, slab prefabs: {spawnedSlabCount}", this);
         }
     }
 
     private int SpawnSegments(
         SegmentData[] segments,
         float levelBaseY,
-        float gridSize)
+        float gridSize,
+        float wallThickness)
     {
         int count = 0;
 
@@ -186,7 +206,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            SpawnSegmentPrefab(prefab, start, end, levelBaseY);
+            SpawnSegmentPrefab(prefab, start, end, levelBaseY, wallThickness);
             count += 1;
         }
 
@@ -212,7 +232,67 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         }
     }
 
-    private void SpawnSegmentPrefab(GameObject prefab, Vector2 start, Vector2 end, float levelBaseY)
+    private int SpawnSlabBoxes(
+        SlabBoxData[] slabBoxes,
+        float levelBaseY,
+        float gridSize,
+        float floorStride,
+        float slabThickness)
+    {
+        if (slabBoxes == null || slabBoxes.Length == 0)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        float safeThickness = Mathf.Max(0.01f, slabThickness);
+
+        for (int i = 0; i < slabBoxes.Length; i++)
+        {
+            SlabBoxData box = slabBoxes[i];
+            if (box == null)
+            {
+                continue;
+            }
+
+            string slabType = string.IsNullOrWhiteSpace(box.type) ? "floor" : box.type.Trim().ToLowerInvariant();
+            bool isCeiling = slabType == "ceiling";
+            GameObject slabPrefab = isCeiling ? ceilingPrefab : floorPrefab;
+            if (slabPrefab == null)
+            {
+                continue;
+            }
+
+            float sx = box.sx * gridSize;
+            float sz = box.sy * gridSize;
+            if (!float.IsFinite(sx) || !float.IsFinite(sz) || sx <= 0.0001f || sz <= 0.0001f)
+            {
+                continue;
+            }
+
+            float px = box.cx * gridSize;
+            float pz = box.cy * gridSize;
+            if (!float.IsFinite(px) || !float.IsFinite(pz))
+            {
+                continue;
+            }
+
+            float y = isCeiling
+                ? levelBaseY + floorStride + safeThickness * 0.5f
+                : levelBaseY - safeThickness * 0.5f;
+
+            Vector3 localPos = new Vector3(px, y, pz);
+            Quaternion localRot = Quaternion.Euler(0f, box.rotation, 0f);
+            Vector3 localScale = new Vector3(sx, safeThickness, sz);
+
+            SpawnPrefab(slabPrefab, localPos, localRot, localScale);
+            count += 1;
+        }
+
+        return count;
+    }
+
+    private void SpawnSegmentPrefab(GameObject prefab, Vector2 start, Vector2 end, float levelBaseY, float wallThickness)
     {
         Vector2 delta = end - start;
         float len = delta.magnitude;
@@ -221,10 +301,13 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             return;
         }
 
+        // Start-pivoted prefabs get extended at the segment end by half wall thickness.
+        float adjustedLength = len + wallThickness * 0.5f;
+
         Vector3 worldPos = new Vector3(start.x, levelBaseY, start.y);
         Vector3 dir3 = new Vector3(delta.x / len, 0f, delta.y / len);
         Quaternion rot = BuildTopViewRotation(dir3);
-        Vector3 scale = BuildScaledLength(prefab.transform.localScale, len);
+        Vector3 scale = BuildScaledLength(prefab.transform.localScale, adjustedLength);
 
         SpawnPrefab(prefab, worldPos, rot, scale);
     }
@@ -290,6 +373,54 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             }
 
             return Mathf.Max(0.001f, bounds.size.y);
+        }
+        finally
+        {
+            if (probe != null)
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                {
+                    DestroyImmediate(probe);
+                }
+                else
+                {
+                    Destroy(probe);
+                }
+#else
+                Destroy(probe);
+#endif
+            }
+        }
+    }
+
+    private float EstimatePrefabThickness(GameObject prefab)
+    {
+        if (prefab == null)
+        {
+            return 0f;
+        }
+
+        GameObject probe = null;
+        try
+        {
+            probe = Instantiate(prefab);
+            probe.hideFlags = HideFlags.HideAndDontSave;
+
+            Renderer[] renderers = probe.GetComponentsInChildren<Renderer>();
+            if (renderers == null || renderers.Length == 0)
+            {
+                return Mathf.Max(0f, probe.transform.localScale.x);
+            }
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            // In top-view XZ generation with +Z forward, thickness maps to local/world X width.
+            return Mathf.Max(0f, bounds.size.x);
         }
         finally
         {

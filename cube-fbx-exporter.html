@@ -408,6 +408,9 @@
         <label class="field">Door Height
           <input id="doorHeightInput" type="number" min="0.25" step="0.25" value="2" />
         </label>
+        <label class="field">Door Width
+          <input id="doorWidthInput" type="number" min="0.1" step="0.05" value="1.25" />
+        </label>
         <label class="field">Window Gap
           <input id="windowGapInput" type="number" min="0.1" step="0.1" value="0.5" />
         </label>
@@ -427,12 +430,17 @@
         <button id="toolWindowBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Window Tool</button>
         <button id="toolCutBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Cut Tool</button>
       </div>
+      <div class="tool-group" aria-label="B group tools">
+        <button id="toolFloorBoxBtn" type="button" class="secondary tool" title="Shortcut: B (cycles B group)">Floor Box</button>
+        <button id="toolCeilingBoxBtn" type="button" class="secondary tool" title="Shortcut: B (cycles B group)">Ceiling Box</button>
+      </div>
       <div class="tool-group" aria-label="S group tools">
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
         <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Remove Wall</button>
       </div>
       <div class="tool-group" aria-label="View tools">
-        <button id="slabPreviewToggleBtn" type="button" class="secondary">Preview Slabs</button>
+        <button id="floorVisibilityToggleBtn" type="button" class="secondary">Show Floor Boxes</button>
+        <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
       </div>
     </div>
 
@@ -493,14 +501,13 @@
     const ORBIT_CONTROLS_MODULE_URL = "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js";
     const LOCAL_UI_STORAGE_KEY = "floor-plan-editor.ui.v1";
     let gridPx = DEFAULT_GRID_PX;
-    const DOOR_WIDTH_UNITS = 1;
+    const DEFAULT_DOOR_WIDTH_UNITS = 1.25;
     const DEFAULT_DOOR_HEAD_HEIGHT_UNITS = 2;
     const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
 
     const exportButton = document.getElementById("exportBtn");
     const preview3dButton = document.getElementById("preview3dBtn");
-    const slabPreviewToggleButton = document.getElementById("slabPreviewToggleBtn");
     const saveButton = document.getElementById("saveBtn");
     const loadButton = document.getElementById("loadBtn");
     const loadInput = document.getElementById("loadInput");
@@ -515,6 +522,8 @@
     const toolDoorButton = document.getElementById("toolDoorBtn");
     const toolWindowButton = document.getElementById("toolWindowBtn");
     const toolCutButton = document.getElementById("toolCutBtn");
+    const toolFloorBoxButton = document.getElementById("toolFloorBoxBtn");
+    const toolCeilingBoxButton = document.getElementById("toolCeilingBoxBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
@@ -525,6 +534,8 @@
     const floorMoveDownButton = document.getElementById("floorMoveDownBtn");
     const floorRemoveButton = document.getElementById("floorRemoveBtn");
     const onionToggleButton = document.getElementById("onionToggleBtn");
+    const floorVisibilityToggleButton = document.getElementById("floorVisibilityToggleBtn");
+    const ceilingVisibilityToggleButton = document.getElementById("ceilingVisibilityToggleBtn");
     const floorsList = document.getElementById("floorsList");
     const planTitleInput = document.getElementById("planTitleInput");
     const zoomReadout = document.getElementById("zoomReadout");
@@ -532,6 +543,7 @@
     const heightInput = document.getElementById("heightInput");
     const joinModeSelect = document.getElementById("joinModeSelect");
     const doorHeightInput = document.getElementById("doorHeightInput");
+    const doorWidthInput = document.getElementById("doorWidthInput");
     const windowGapInput = document.getElementById("windowGapInput");
     const exportPropsToggleButton = document.getElementById("exportPropsToggleBtn");
     const exportPropsPanel = document.getElementById("exportPropsPanel");
@@ -543,10 +555,11 @@
     const preview3dCloseButton = document.getElementById("preview3dCloseBtn");
     const preview3dCanvas = document.getElementById("preview3dCanvas");
 
-    function createLevel(name, levelSegments) {
+    function createLevel(name, levelSegments, levelSlabBoxes) {
       return {
         name,
-        segments: Array.isArray(levelSegments) ? levelSegments : []
+        segments: Array.isArray(levelSegments) ? levelSegments : [],
+        slabBoxes: Array.isArray(levelSlabBoxes) ? levelSlabBoxes : []
       };
     }
 
@@ -567,6 +580,7 @@
     let viewOffsetY = 0;
     let activeTool = "wall";
     let selectedSegmentIndices = new Set();
+    let selectedSlabBoxIndices = new Set();
     let isMarqueeSelecting = false;
     let marqueeStartWorld = null;
     let marqueeEndWorld = null;
@@ -576,9 +590,11 @@
     let undoSnapshot = null;
     let redoSnapshot = null;
     let isExportPropsOpen = false;
-    let isSlabPreviewVisible = false;
     let isOnionViewEnabled = true;
+    let isFloorBoxesVisible = true;
+    let isCeilingBoxesVisible = true;
     let ellipseForceCircle = false;
+    let slabPlacementRotationDeg = 0;
     let preview3dRuntime = null;
     let preview3dAnimationId = null;
     let preview3dResizeHandler = null;
@@ -593,6 +609,7 @@
       currentLevelIndex = clamped;
       segments = floors[currentLevelIndex].segments;
       selectedSegmentIndices.clear();
+      selectedSlabBoxIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -679,6 +696,8 @@
       door: toolDoorButton,
       window: toolWindowButton,
       cut: toolCutButton,
+      floorbox: toolFloorBoxButton,
+      ceilingbox: toolCeilingBoxButton,
       select: toolSelectButton,
       erase: toolEraseButton
     };
@@ -695,7 +714,9 @@
       try {
         localStorage.setItem(LOCAL_UI_STORAGE_KEY, JSON.stringify({
           isExportPropsOpen,
-          isOnionViewEnabled
+          isOnionViewEnabled,
+          isFloorBoxesVisible,
+          isCeilingBoxesVisible
         }));
       } catch (error) {
         console.warn("Failed to save UI state.", error);
@@ -708,20 +729,31 @@
         if (!raw) {
           isExportPropsOpen = false;
           isOnionViewEnabled = true;
+          isFloorBoxesVisible = true;
+          isCeilingBoxesVisible = true;
           return;
         }
         const data = JSON.parse(raw);
         isExportPropsOpen = !!(data && data.isExportPropsOpen);
         isOnionViewEnabled = !(data && data.isOnionViewEnabled === false);
+        isFloorBoxesVisible = !(data && data.isFloorBoxesVisible === false);
+        isCeilingBoxesVisible = !(data && data.isCeilingBoxesVisible === false);
       } catch (error) {
         console.warn("Failed to load UI state.", error);
         isExportPropsOpen = false;
         isOnionViewEnabled = true;
+        isFloorBoxesVisible = true;
+        isCeilingBoxesVisible = true;
       }
     }
 
     function updateOnionToggleButton() {
       onionToggleButton.textContent = isOnionViewEnabled ? "Onion View: On" : "Onion View: Off";
+    }
+
+    function updateSlabVisibilityButtons() {
+      floorVisibilityToggleButton.textContent = isFloorBoxesVisible ? "Hide Floor Boxes" : "Show Floor Boxes";
+      ceilingVisibilityToggleButton.textContent = isCeilingBoxesVisible ? "Hide Ceiling Boxes" : "Show Ceiling Boxes";
     }
 
     function applyExportPropsVisibility() {
@@ -740,6 +772,10 @@
 
     function getDoorHeadHeight() {
       return clampNumber(doorHeightInput.value, DEFAULT_DOOR_HEAD_HEIGHT_UNITS, 0.25);
+    }
+
+    function getDoorWidthUnits() {
+      return clampNumber(doorWidthInput.value, DEFAULT_DOOR_WIDTH_UNITS, 0.1);
     }
 
     function getWindowOpeningGap() {
@@ -915,8 +951,208 @@
       ctx.restore();
     }
 
+    function getCurrentLevelSlabBoxes() {
+      const level = getCurrentLevel();
+      if (!level.slabBoxes) {
+        level.slabBoxes = [];
+      }
+      return level.slabBoxes;
+    }
+
+    function normalizeRotationDegrees(value) {
+      let normalized = Number(value);
+      if (!Number.isFinite(normalized)) {
+        normalized = 0;
+      }
+      normalized %= 360;
+      if (normalized < 0) {
+        normalized += 360;
+      }
+      return normalized;
+    }
+
+    function getSlabBoxCorners(box) {
+      const cx = Number(box.cx);
+      const cy = Number(box.cy);
+      const sx = Math.max(0.001, Number(box.sx));
+      const sy = Math.max(0.001, Number(box.sy));
+      const angleRad = normalizeRotationDegrees(box.rotation) * Math.PI / 180;
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+      const hx = sx * 0.5;
+      const hy = sy * 0.5;
+      const local = [
+        { x: -hx, y: -hy },
+        { x: hx, y: -hy },
+        { x: hx, y: hy },
+        { x: -hx, y: hy }
+      ];
+
+      return local.map(p => ({
+        x: cx + (p.x * cos - p.y * sin),
+        y: cy + (p.x * sin + p.y * cos)
+      }));
+    }
+
+    function isSlabTypeVisible(type) {
+      if (type === "ceiling") {
+        return isCeilingBoxesVisible;
+      }
+      return isFloorBoxesVisible;
+    }
+
+    function worldToSlabLocal(point, box) {
+      const angleRad = normalizeRotationDegrees(box.rotation) * Math.PI / 180;
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+      const dx = point.x - box.cx;
+      const dy = point.y - box.cy;
+      return {
+        x: dx * cos + dy * sin,
+        y: -dx * sin + dy * cos
+      };
+    }
+
+    function pointInSlabBox(point, box) {
+      if (!box) {
+        return false;
+      }
+      const local = worldToSlabLocal(point, box);
+      const hx = Math.max(0.0005, Number(box.sx) * 0.5);
+      const hy = Math.max(0.0005, Number(box.sy) * 0.5);
+      return Math.abs(local.x) <= hx && Math.abs(local.y) <= hy;
+    }
+
+    function findTopmostSlabBoxIndex(point, filterFn) {
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      for (let i = slabBoxes.length - 1; i >= 0; i -= 1) {
+        const box = slabBoxes[i];
+        if (!box) {
+          continue;
+        }
+        if (filterFn && !filterFn(box)) {
+          continue;
+        }
+        if (!isSlabTypeVisible(box.type || "floor")) {
+          continue;
+        }
+        if (pointInSlabBox(point, box)) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function getSingleSelectedSlabHandleHit(pointerWorld) {
+      if (selectedSlabBoxIndices.size !== 1) {
+        return null;
+      }
+      const index = Array.from(selectedSlabBoxIndices)[0];
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      const box = slabBoxes[index];
+      if (!box || !isSlabTypeVisible(box.type || "floor")) {
+        return null;
+      }
+
+      const corners = getSlabBoxCorners(box);
+      const toleranceWorld = Math.max(0.2, 10 / Math.max(gridPx, 1));
+      let bestCorner = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < corners.length; i += 1) {
+        const d = Math.hypot(pointerWorld.x - corners[i].x, pointerWorld.y - corners[i].y);
+        if (d < bestDist) {
+          bestDist = d;
+          bestCorner = i;
+        }
+      }
+
+      if (bestDist > toleranceWorld) {
+        return null;
+      }
+
+      return {
+        index,
+        corner: bestCorner,
+        startBox: {
+          cx: box.cx,
+          cy: box.cy,
+          sx: box.sx,
+          sy: box.sy,
+          rotation: box.rotation
+        }
+      };
+    }
+
+    function drawSlabBoxes(slabBoxes, options) {
+      if (!Array.isArray(slabBoxes) || slabBoxes.length === 0) {
+        return;
+      }
+
+      const alpha = options && Number.isFinite(options.alpha) ? options.alpha : 1;
+      const isCurrent = !!(options && options.isCurrent);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      for (let i = 0; i < slabBoxes.length; i += 1) {
+        const box = slabBoxes[i];
+        if (!box) {
+          continue;
+        }
+        if (!isSlabTypeVisible(box.type || "floor")) {
+          continue;
+        }
+        const corners = getSlabBoxCorners(box);
+        if (corners.length !== 4) {
+          continue;
+        }
+
+        const fill = (box.type === "ceiling")
+          ? (isCurrent ? "rgba(59,130,246,0.18)" : "rgba(147,197,253,0.16)")
+          : (isCurrent ? "rgba(16,185,129,0.18)" : "rgba(110,231,183,0.16)");
+        const stroke = (box.type === "ceiling")
+          ? (isCurrent ? "#2563eb" : "#93c5fd")
+          : (isCurrent ? "#059669" : "#6ee7b7");
+
+        ctx.beginPath();
+        const p0 = gridToCanvas(corners[0]);
+        ctx.moveTo(p0.x, p0.y);
+        for (let c = 1; c < corners.length; c += 1) {
+          const pc = gridToCanvas(corners[c]);
+          ctx.lineTo(pc.x, pc.y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function createSlabBoxFromDrag(type, fromGrid, toGrid) {
+      const minX = Math.min(fromGrid.x, toGrid.x);
+      const maxX = Math.max(fromGrid.x, toGrid.x);
+      const minY = Math.min(fromGrid.y, toGrid.y);
+      const maxY = Math.max(fromGrid.y, toGrid.y);
+      const sx = Math.max(1, maxX - minX);
+      const sy = Math.max(1, maxY - minY);
+
+      return {
+        type: type === "ceiling" ? "ceiling" : "floor",
+        cx: (minX + maxX) * 0.5,
+        cy: (minY + maxY) * 0.5,
+        sx,
+        sy,
+        rotation: normalizeRotationDegrees(slabPlacementRotationDeg)
+      };
+    }
+
     function drawSegments() {
       if (!isOnionViewEnabled) {
+        drawSlabBoxes(getCurrentLevel().slabBoxes || [], { alpha: 1, isCurrent: true });
         drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
         return;
       }
@@ -925,99 +1161,17 @@
       const above = floors[currentLevelIndex + 1];
 
       if (below) {
+        drawSlabBoxes(below.slabBoxes || [], { alpha: 0.7, isCurrent: false });
         drawFloorSegments(below.segments, { alpha: 0.8, tintColor: "#9ca3af", isCurrent: false });
       }
 
+      drawSlabBoxes(getCurrentLevel().slabBoxes || [], { alpha: 1, isCurrent: true });
       drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
 
       if (above) {
+        drawSlabBoxes(above.slabBoxes || [], { alpha: 0.65, isCurrent: false });
         drawFloorSegments(above.segments, { alpha: 0.7, tintColor: "#93c5fd", isCurrent: false });
       }
-    }
-
-    function computeSlabPolygonsForLevel(levelSegments) {
-      if (!Array.isArray(levelSegments) || levelSegments.length === 0) {
-        return [];
-      }
-
-      const slabBoundaryTypes = new Set(["wall", "door", "window", "halfwall"]);
-      const worldSegments = [];
-
-      for (let i = 0; i < levelSegments.length; i += 1) {
-        const seg = levelSegments[i];
-        if (!seg || !seg.a || !seg.b || !slabBoundaryTypes.has(seg.type || "wall")) {
-          continue;
-        }
-
-        const ax = Number(seg.a.x);
-        const ay = Number(seg.a.y);
-        const bx = Number(seg.b.x);
-        const by = Number(seg.b.y);
-        if (![ax, ay, bx, by].every(Number.isFinite)) {
-          continue;
-        }
-        if (Math.hypot(bx - ax, by - ay) < 1e-8) {
-          continue;
-        }
-
-        worldSegments.push({
-          a: { x: ax, z: ay },
-          b: { x: bx, z: by },
-          type: seg.type || "wall"
-        });
-      }
-
-      if (worldSegments.length < 3) {
-        return [];
-      }
-
-      const split = splitSegmentsAtIntersections(worldSegments);
-      return extractBoundedFacesFromSegments(split);
-    }
-
-    function drawSlabPreview() {
-      if (!isSlabPreviewVisible) {
-        return;
-      }
-
-      const polygons = computeSlabPolygonsForLevel(segments);
-      if (polygons.length === 0) {
-        return;
-      }
-
-      ctx.save();
-      ctx.fillStyle = "rgba(16,185,129,0.16)";
-      ctx.strokeStyle = "rgba(16,185,129,0.62)";
-      ctx.lineWidth = 1.5;
-
-      for (let i = 0; i < polygons.length; i += 1) {
-        const poly = polygons[i];
-        if (!Array.isArray(poly) || poly.length < 3) {
-          continue;
-        }
-
-        ctx.beginPath();
-        for (let j = 0; j < poly.length; j += 1) {
-          const p = gridToCanvas({ x: poly[j].x, y: poly[j].z });
-          if (j === 0) {
-            ctx.moveTo(p.x, p.y);
-          } else {
-            ctx.lineTo(p.x, p.y);
-          }
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Dashed outline suggests the paired ceiling surface in top view.
-        ctx.save();
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = "rgba(37,99,235,0.75)";
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      ctx.restore();
     }
 
     function buildEllipsePoints(center, target, forceCircle) {
@@ -1125,7 +1279,7 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box" || activeTool === "ellipse")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
           if (points.length >= 3) {
@@ -1165,6 +1319,22 @@
             ctx.lineTo(b.x, b.y);
             ctx.stroke();
           }
+        } else if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+          const previewBox = createSlabBoxFromDrag(activeTool === "ceilingbox" ? "ceiling" : "floor", startGrid, pointerGrid);
+          const corners = getSlabBoxCorners(previewBox);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = activeTool === "ceilingbox" ? "#2563eb" : "#059669";
+          ctx.fillStyle = activeTool === "ceilingbox" ? "rgba(59,130,246,0.16)" : "rgba(16,185,129,0.16)";
+          ctx.beginPath();
+          const p0 = gridToCanvas(corners[0]);
+          ctx.moveTo(p0.x, p0.y);
+          for (let i = 1; i < corners.length; i += 1) {
+            const p = gridToCanvas(corners[i]);
+            ctx.lineTo(p.x, p.y);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
         } else {
           const a = gridToCanvas(startGrid);
           const target = activeTool === "door" ? projectDoorEndpoint(startGrid, pointerGrid) : pointerGrid;
@@ -1235,36 +1405,86 @@
           ctx.restore();
         }
       }
+
+      if (activeTool === "select" && selectedSlabBoxIndices.size > 0) {
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        const indices = Array.from(selectedSlabBoxIndices);
+        for (let i = 0; i < indices.length; i += 1) {
+          const box = slabBoxes[indices[i]];
+          if (!box || !isSlabTypeVisible(box.type || "floor")) {
+            continue;
+          }
+          const corners = getSlabBoxCorners(box);
+          if (corners.length !== 4) {
+            continue;
+          }
+
+          const stroke = box.type === "ceiling" ? "#1d4ed8" : "#047857";
+          ctx.save();
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          const p0 = gridToCanvas(corners[0]);
+          ctx.moveTo(p0.x, p0.y);
+          for (let c = 1; c < corners.length; c += 1) {
+            const p = gridToCanvas(corners[c]);
+            ctx.lineTo(p.x, p.y);
+          }
+          ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (selectedSlabBoxIndices.size === 1) {
+          const index = indices[0];
+          const box = slabBoxes[index];
+          if (box && isSlabTypeVisible(box.type || "floor")) {
+            const corners = getSlabBoxCorners(box);
+            ctx.save();
+            ctx.fillStyle = "#ffffff";
+            ctx.strokeStyle = box.type === "ceiling" ? "#1d4ed8" : "#047857";
+            ctx.lineWidth = 2;
+            for (let c = 0; c < corners.length; c += 1) {
+              const p = gridToCanvas(corners[c]);
+              ctx.beginPath();
+              ctx.rect(p.x - 4, p.y - 4, 8, 8);
+              ctx.fill();
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
+      }
     }
 
     function redraw() {
       drawGrid();
       drawSegments();
-      drawSlabPreview();
       drawPreview();
       updateMeta();
       updateZoomReadout();
-    }
-
-    function updateSlabPreviewToggleButton() {
-      slabPreviewToggleButton.textContent = isSlabPreviewVisible ? "Hide Slab Preview" : "Preview Slabs";
     }
 
     function updateMeta() {
       const wallHeight = getWallHeight().toFixed(2);
       const wallThickness = getWallThickness().toFixed(2);
       const doorHeight = getDoorHeadHeight().toFixed(2);
+      const doorWidth = getDoorWidthUnits().toFixed(2);
       const windowGap = getWindowOpeningGap().toFixed(2);
       const wallCount = segments.filter(seg => seg.type === "wall").length;
       const fakeWallCount = segments.filter(seg => seg.type === "fakewall").length;
       const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
       const windowCount = segments.filter(seg => seg.type === "window").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount}`;
+      const slabBoxes = getCurrentLevel().slabBoxes || [];
+      const floorSlabCount = slabBoxes.filter(box => box && box.type === "floor").length;
+      const ceilingSlabCount = slabBoxes.filter(box => box && box.type === "ceiling").length;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount}`;
     }
 
     function getDoorWidthGrid() {
-      return DOOR_WIDTH_UNITS / GRID_SIZE_UNITS;
+      return getDoorWidthUnits() / GRID_SIZE_UNITS;
     }
 
     function updateZoomReadout() {
@@ -1404,6 +1624,31 @@
         }
       }
 
+      if (drag.mode === "move-slab-selection" && Array.isArray(drag.originals)) {
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        for (let i = 0; i < drag.originals.length; i += 1) {
+          const original = drag.originals[i];
+          const box = slabBoxes[original.index];
+          if (!box) {
+            continue;
+          }
+          if (Math.hypot(box.cx - original.cx, box.cy - original.cy) > 1e-9) {
+            return true;
+          }
+        }
+      }
+
+      if (drag.mode === "scale-slab-box" && drag.startBox) {
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        const box = slabBoxes[drag.index];
+        if (!box) {
+          return false;
+        }
+        if (Math.abs(box.sx - drag.startBox.sx) > 1e-9 || Math.abs(box.sy - drag.startBox.sy) > 1e-9) {
+          return true;
+        }
+      }
+
       return false;
     }
 
@@ -1414,6 +1659,7 @@
       ellipseForceCircle = false;
       startGrid = null;
       selectedSegmentIndices.clear();
+      selectedSlabBoxIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -1424,7 +1670,11 @@
         toolButtons[key].classList.toggle("active", key === activeTool);
       });
 
-      status.textContent = `Tool changed to ${activeTool}.`;
+      if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+        status.textContent = `Tool changed to ${activeTool}. Drag to place box. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
+      } else {
+        status.textContent = `Tool changed to ${activeTool}.`;
+      }
       redraw();
     }
 
@@ -1449,7 +1699,7 @@
     }
 
     function deleteSelectedSegments() {
-      if (selectedSegmentIndices.size === 0) {
+      if (selectedSegmentIndices.size === 0 && selectedSlabBoxIndices.size === 0) {
         return 0;
       }
 
@@ -1462,8 +1712,17 @@
         }
       }
 
-      const removedCount = indices.length;
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      const slabIndices = Array.from(selectedSlabBoxIndices).sort((a, b) => b - a);
+      for (let i = 0; i < slabIndices.length; i += 1) {
+        if (slabIndices[i] >= 0 && slabIndices[i] < slabBoxes.length) {
+          slabBoxes.splice(slabIndices[i], 1);
+        }
+      }
+
+      const removedCount = indices.length + slabIndices.length;
       selectedSegmentIndices.clear();
+      selectedSlabBoxIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -1984,6 +2243,14 @@
           a: { x: seg.a.x, y: seg.a.y },
           b: { x: seg.b.x, y: seg.b.y },
           type: seg.type || "wall"
+        })),
+        slabBoxes: (Array.isArray(floor.slabBoxes) ? floor.slabBoxes : []).map(box => ({
+          type: box.type === "ceiling" ? "ceiling" : "floor",
+          cx: Number(box.cx),
+          cy: Number(box.cy),
+          sx: Number(box.sx),
+          sy: Number(box.sy),
+          rotation: Number(box.rotation) || 0
         }))
       }));
 
@@ -1996,6 +2263,7 @@
           height: getWallHeight(),
           joinMode: joinModeSelect.value,
           doorHeight: getDoorHeadHeight(),
+          doorWidth: getDoorWidthUnits(),
           windowGap: getWindowOpeningGap()
         },
         view: {
@@ -2086,6 +2354,36 @@
         return out;
       };
 
+      const sanitizeSlabBoxes = rawBoxes => {
+        const out = [];
+        if (!Array.isArray(rawBoxes)) {
+          return out;
+        }
+        for (let i = 0; i < rawBoxes.length; i += 1) {
+          const box = rawBoxes[i];
+          if (!box) {
+            continue;
+          }
+          const cx = Number(box.cx);
+          const cy = Number(box.cy);
+          const sx = Number(box.sx);
+          const sy = Number(box.sy);
+          const rotation = Number(box.rotation);
+          if (![cx, cy, sx, sy].every(Number.isFinite)) {
+            continue;
+          }
+          out.push({
+            type: box.type === "ceiling" ? "ceiling" : "floor",
+            cx,
+            cy,
+            sx: Math.max(0.001, sx),
+            sy: Math.max(0.001, sy),
+            rotation: Number.isFinite(rotation) ? rotation : 0
+          });
+        }
+        return out;
+      };
+
       let loadedFloors = [];
 
       if (Array.isArray(data.floors) && data.floors.length > 0) {
@@ -2093,16 +2391,17 @@
           floor && typeof floor.name === "string" && floor.name.trim()
             ? floor.name.trim()
             : buildLevelDefaultName(index),
-          sanitizeSegments(floor ? floor.segments : [])
+          sanitizeSegments(floor ? floor.segments : []),
+          sanitizeSlabBoxes(floor ? floor.slabBoxes : [])
         ));
       } else if (Array.isArray(data.segments)) {
-        loadedFloors = [createLevel("Level 1", sanitizeSegments(data.segments))];
+        loadedFloors = [createLevel("Level 1", sanitizeSegments(data.segments), [])];
       } else {
         throw new Error("Invalid plan file.");
       }
 
       if (loadedFloors.length === 0) {
-        loadedFloors = [createLevel("Level 1", [])];
+        loadedFloors = [createLevel("Level 1", [], [])];
       }
 
       floors.length = 0;
@@ -2131,6 +2430,9 @@
         if (Number.isFinite(Number(data.settings.doorHeight))) {
           doorHeightInput.value = String(data.settings.doorHeight);
         }
+        if (Number.isFinite(Number(data.settings.doorWidth))) {
+          doorWidthInput.value = String(data.settings.doorWidth);
+        }
         if (Number.isFinite(Number(data.settings.windowGap))) {
           windowGapInput.value = String(data.settings.windowGap);
         }
@@ -2149,6 +2451,7 @@
       }
 
       selectedSegmentIndices.clear();
+      selectedSlabBoxIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -2585,8 +2888,7 @@
         bounded.push(faces[i].points);
       }
 
-      // When there is only one valid closed loop, it is the interior we need
-      // for slab generation. Keep it instead of returning an empty set.
+      // When there is only one valid closed loop, keep it instead of returning an empty set.
       if (bounded.length === 0 && faces.length === 1) {
         return [faces[0].points];
       }
@@ -3247,39 +3549,123 @@
     function buildCombinedWallsMeshData() {
       const floorStride = getWallHeight() + getWallThickness() * 0.5;
       const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
+      const slabThickness = Math.max(0.05, getWallThickness());
+
+      function appendSlabBox(cx, cz, sx, sz, baseY, topY, rotationDeg, group) {
+        if (!Number.isFinite(cx) || !Number.isFinite(cz) || !Number.isFinite(sx) || !Number.isFinite(sz)) {
+          return;
+        }
+        if (sx <= 1e-6 || sz <= 1e-6 || topY - baseY <= 1e-6) {
+          return;
+        }
+
+        const angle = (Number(rotationDeg) || 0) * Math.PI / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const hx = sx * 0.5;
+        const hz = sz * 0.5;
+        const local = [
+          [-hx, -hz],
+          [hx, -hz],
+          [hx, hz],
+          [-hx, hz]
+        ];
+
+        const corners = local.map(p => [
+          cx + p[0] * cos - p[1] * sin,
+          cz + p[0] * sin + p[1] * cos
+        ]);
+
+        const v0 = [corners[0][0], baseY, corners[0][1]];
+        const v1 = [corners[1][0], baseY, corners[1][1]];
+        const v2 = [corners[2][0], baseY, corners[2][1]];
+        const v3 = [corners[3][0], baseY, corners[3][1]];
+        const v4 = [corners[0][0], topY, corners[0][1]];
+        const v5 = [corners[1][0], topY, corners[1][1]];
+        const v6 = [corners[2][0], topY, corners[2][1]];
+        const v7 = [corners[3][0], topY, corners[3][1]];
+
+        const offset = meshData.vertices.length;
+        meshData.vertices.push(v0, v1, v2, v3, v4, v5, v6, v7);
+
+        const pushFace = (a, b, c) => {
+          meshData.faces.push([offset + a, offset + b, offset + c]);
+          meshData.faceGroups.push(group);
+        };
+
+        pushFace(4, 6, 5);
+        pushFace(4, 7, 6);
+        pushFace(0, 1, 2);
+        pushFace(0, 2, 3);
+        pushFace(0, 4, 5);
+        pushFace(0, 5, 1);
+        pushFace(1, 5, 6);
+        pushFace(1, 6, 2);
+        pushFace(2, 6, 7);
+        pushFace(2, 7, 3);
+        pushFace(3, 7, 4);
+        pushFace(3, 4, 0);
+      }
 
       for (let i = 0; i < floors.length; i += 1) {
         const floor = floors[i];
-        if (!floor.segments || floor.segments.length === 0) {
+        const hasSegments = floor.segments && floor.segments.length > 0;
+        const hasSlabs = floor.slabBoxes && floor.slabBoxes.length > 0;
+        if (!hasSegments && !hasSlabs) {
           continue;
         }
 
-        const floorMesh = buildWallMeshData(
-          floor.segments,
-          i * floorStride,
-          floor.name || buildLevelDefaultName(i)
-        );
+        const levelBaseY = i * floorStride;
 
-        if (floorMesh.vertices.length === 0 || floorMesh.faces.length === 0) {
-          continue;
-        }
-
-        const vertexOffset = meshData.vertices.length;
-        for (let v = 0; v < floorMesh.vertices.length; v += 1) {
-          meshData.vertices.push(floorMesh.vertices[v]);
-        }
-        for (let f = 0; f < floorMesh.faces.length; f += 1) {
-          const face = floorMesh.faces[f];
-          meshData.faces.push([
-            face[0] + vertexOffset,
-            face[1] + vertexOffset,
-            face[2] + vertexOffset
-          ]);
-          meshData.faceGroups.push(
-            floorMesh.faceGroups && floorMesh.faceGroups[f]
-              ? floorMesh.faceGroups[f]
-              : "walls"
+        if (hasSegments) {
+          const floorMesh = buildWallMeshData(
+            floor.segments,
+            levelBaseY,
+            floor.name || buildLevelDefaultName(i)
           );
+
+          if (floorMesh.vertices.length > 0 && floorMesh.faces.length > 0) {
+            const vertexOffset = meshData.vertices.length;
+            for (let v = 0; v < floorMesh.vertices.length; v += 1) {
+              meshData.vertices.push(floorMesh.vertices[v]);
+            }
+            for (let f = 0; f < floorMesh.faces.length; f += 1) {
+              const face = floorMesh.faces[f];
+              meshData.faces.push([
+                face[0] + vertexOffset,
+                face[1] + vertexOffset,
+                face[2] + vertexOffset
+              ]);
+              meshData.faceGroups.push(
+                floorMesh.faceGroups && floorMesh.faceGroups[f]
+                  ? floorMesh.faceGroups[f]
+                  : "walls"
+              );
+            }
+          }
+        }
+
+        if (hasSlabs) {
+          for (let s = 0; s < floor.slabBoxes.length; s += 1) {
+            const box = floor.slabBoxes[s];
+            if (!box) {
+              continue;
+            }
+
+            const cx = Number(box.cx) * GRID_SIZE_UNITS;
+            const cz = Number(box.cy) * GRID_SIZE_UNITS;
+            const sx = Number(box.sx) * GRID_SIZE_UNITS;
+            const sz = Number(box.sy) * GRID_SIZE_UNITS;
+            const rotation = Number(box.rotation) || 0;
+            const type = box.type === "ceiling" ? "ceiling" : "floor";
+
+            if (type === "ceiling") {
+              const baseY = levelBaseY + getWallHeight();
+              appendSlabBox(cx, cz, sx, sz, baseY, baseY + slabThickness, rotation, "ceiling");
+            } else {
+              appendSlabBox(cx, cz, sx, sz, levelBaseY - slabThickness, levelBaseY, rotation, "floor");
+            }
+          }
         }
       }
 
@@ -3287,9 +3673,12 @@
     }
 
     function exportWallsAsGlb() {
-      const hasAnySegments = floors.some(floor => floor.segments.length > 0);
-      if (!hasAnySegments) {
-        status.textContent = "Draw at least one line before exporting.";
+      const hasAnyGeometry = floors.some(floor =>
+        (Array.isArray(floor.segments) && floor.segments.length > 0)
+        || (Array.isArray(floor.slabBoxes) && floor.slabBoxes.length > 0)
+      );
+      if (!hasAnyGeometry) {
+        status.textContent = "Draw lines or place floor/ceiling boxes before exporting.";
         return;
       }
 
@@ -3392,9 +3781,12 @@
     }
 
     async function openPreview3d() {
-      const hasAnySegments = floors.some(floor => floor.segments.length > 0);
-      if (!hasAnySegments) {
-        status.textContent = "Draw at least one line before opening 3D preview.";
+      const hasAnyGeometry = floors.some(floor =>
+        (Array.isArray(floor.segments) && floor.segments.length > 0)
+        || (Array.isArray(floor.slabBoxes) && floor.slabBoxes.length > 0)
+      );
+      if (!hasAnyGeometry) {
+        status.textContent = "Draw lines or place floor/ceiling boxes before opening 3D preview.";
         return;
       }
 
@@ -3568,9 +3960,62 @@
 
       if (activeTool === "select") {
         const hitIndex = findNearestSegmentIndex(pointerGrid, () => true);
+        const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
         const addMode = event.shiftKey;
         const removeMode = event.ctrlKey;
         const endpointHit = !addMode && !removeMode ? getSingleSelectedEndpointHit(pointerWorld) : null;
+        const slabHandleHit = !addMode && !removeMode ? getSingleSelectedSlabHandleHit(pointerWorld) : null;
+
+        if (slabHandleHit) {
+          dragState = {
+            mode: "scale-slab-box",
+            index: slabHandleHit.index,
+            corner: slabHandleHit.corner,
+            startPointer: clonePoint(pointerGrid),
+            startBox: slabHandleHit.startBox,
+            undoSnapshot: captureCurrentProjectSnapshot()
+          };
+          status.textContent = "Drag slab handle to scale box.";
+          redraw();
+          return;
+        }
+
+        if (slabHitIndex >= 0 && !addMode && !removeMode) {
+          if (!selectedSlabBoxIndices.has(slabHitIndex)) {
+            selectedSlabBoxIndices.clear();
+            selectedSlabBoxIndices.add(slabHitIndex);
+            selectedSegmentIndices.clear();
+          }
+
+          const selected = Array.from(selectedSlabBoxIndices);
+          const slabBoxes = getCurrentLevelSlabBoxes();
+          dragState = {
+            mode: "move-slab-selection",
+            indices: selected,
+            startPointer: clonePoint(pointerGrid),
+            undoSnapshot: captureCurrentProjectSnapshot(),
+            originals: selected.map(idx => ({
+              index: idx,
+              cx: slabBoxes[idx].cx,
+              cy: slabBoxes[idx].cy
+            }))
+          };
+          status.textContent = `Selected ${selectedSlabBoxIndices.size} slab box(es). Drag to move.`;
+          redraw();
+          return;
+        } else if (slabHitIndex >= 0 && (addMode || removeMode)) {
+          if (addMode) {
+            selectedSlabBoxIndices.add(slabHitIndex);
+          }
+          if (removeMode) {
+            selectedSlabBoxIndices.delete(slabHitIndex);
+          }
+          selectedSegmentIndices.clear();
+          dragState = null;
+          status.textContent = `Selected ${selectedSlabBoxIndices.size} slab box(es).`;
+          redraw();
+          return;
+        }
 
         if (endpointHit) {
           dragState = {
@@ -3590,6 +4035,7 @@
           if (!selectedSegmentIndices.has(hitIndex)) {
             selectedSegmentIndices.clear();
             selectedSegmentIndices.add(hitIndex);
+            selectedSlabBoxIndices.clear();
           }
 
           const selected = Array.from(selectedSegmentIndices);
@@ -3612,11 +4058,13 @@
           if (removeMode) {
             selectedSegmentIndices.delete(hitIndex);
           }
+          selectedSlabBoxIndices.clear();
           dragState = null;
           status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
         } else {
           if (!addMode && !removeMode) {
             selectedSegmentIndices.clear();
+            selectedSlabBoxIndices.clear();
           }
           isMarqueeSelecting = true;
           marqueeStartWorld = clonePoint(pointerWorld);
@@ -3651,6 +4099,13 @@
         } else {
           status.textContent = "No cuttable segment found under cursor.";
         }
+        redraw();
+        return;
+      }
+
+      if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+        startGrid = clonePoint(pointerGrid);
+        drawing = true;
         redraw();
         return;
       }
@@ -3717,7 +4172,7 @@
             seg.b.x = movedX;
             seg.b.y = movedY;
           }
-        } else {
+        } else if (dragState.mode === "move-selection") {
           for (let i = 0; i < dragState.originals.length; i += 1) {
             const original = dragState.originals[i];
             const seg = segments[original.index];
@@ -3729,6 +4184,27 @@
             seg.b.x = original.b.x + dx;
             seg.b.y = original.b.y + dy;
           }
+        } else if (dragState.mode === "move-slab-selection") {
+          const slabBoxes = getCurrentLevelSlabBoxes();
+          for (let i = 0; i < dragState.originals.length; i += 1) {
+            const original = dragState.originals[i];
+            const box = slabBoxes[original.index];
+            if (!box) {
+              continue;
+            }
+            box.cx = original.cx + dx;
+            box.cy = original.cy + dy;
+          }
+        } else if (dragState.mode === "scale-slab-box") {
+          const slabBoxes = getCurrentLevelSlabBoxes();
+          const box = slabBoxes[dragState.index];
+          if (!box) {
+            redraw();
+            return;
+          }
+          const local = worldToSlabLocal(pointerWorld, dragState.startBox);
+          box.sx = Math.max(1, Math.abs(local.x) * 2);
+          box.sy = Math.max(1, Math.abs(local.y) * 2);
         }
 
         queueLocalAutosave();
@@ -3758,6 +4234,7 @@
 
           if (marqueeMode === "replace") {
             selectedSegmentIndices.clear();
+            selectedSlabBoxIndices.clear();
           }
 
           if (marqueeMode === "add" || marqueeMode === "replace") {
@@ -3779,6 +4256,16 @@
               recordUndoSnapshot(dragState.undoSnapshot);
             }
             status.textContent = merged ? "Lines merged." : "Line endpoint moved.";
+          } else if (dragState.mode === "move-slab-selection") {
+            if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
+              recordUndoSnapshot(dragState.undoSnapshot);
+            }
+            status.textContent = `Moved ${selectedSlabBoxIndices.size} slab box(es).`;
+          } else if (dragState.mode === "scale-slab-box") {
+            if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
+              recordUndoSnapshot(dragState.undoSnapshot);
+            }
+            status.textContent = "Slab box scaled.";
           } else {
             if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
               recordUndoSnapshot(dragState.undoSnapshot);
@@ -3817,7 +4304,7 @@
         const doorA = carved ? carved.a : { x: startGrid.x, y: startGrid.y };
         const doorB = carved ? carved.b : { x: doorEnd.x, y: doorEnd.y };
         addSegmentWithCuts("door", doorA, doorB);
-        status.textContent = `Door added (width ${DOOR_WIDTH_UNITS}). Total segments: ${segments.length}`;
+        status.textContent = `Door added (width ${getDoorWidthUnits().toFixed(2)}). Total segments: ${segments.length}`;
       } else if (activeTool === "window" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
         const carved = carveDoorIntoWall(startGrid, endGrid);
         const windowA = carved ? carved.a : { x: startGrid.x, y: startGrid.y };
@@ -3840,6 +4327,13 @@
         addWallSegmentWithCut(p2, p3);
         addWallSegmentWithCut(p3, p0);
         status.textContent = `Box added. Total segments: ${segments.length}`;
+      } else if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        const slabType = activeTool === "ceilingbox" ? "ceiling" : "floor";
+        const slabBox = createSlabBoxFromDrag(slabType, startGrid, endGrid);
+        slabBoxes.push(slabBox);
+        queueLocalAutosave();
+        status.textContent = `${slabType === "ceiling" ? "Ceiling" : "Floor"} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
       } else if (activeTool === "ellipse") {
         const forceCircle = ellipseForceCircle || event.ctrlKey;
         const addedCount = addEllipseAsWalls(startGrid, endGrid, forceCircle);
@@ -3892,12 +4386,22 @@
 
       const p = getPointerPosition(event);
       const pointer = canvasToGrid(p.x, p.y);
+      const pointerWorld = canvasToWorld(p.x, p.y);
       const hitIndex = findNearestSegmentIndex(pointer, () => true);
-      if (hitIndex >= 0) {
+      const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
+      if (slabHitIndex >= 0) {
         selectedSegmentIndices.clear();
+        selectedSlabBoxIndices.clear();
+        selectedSlabBoxIndices.add(slabHitIndex);
+        status.textContent = "Tool changed to select. 1 slab box selected.";
+      } else if (hitIndex >= 0) {
+        selectedSegmentIndices.clear();
+        selectedSlabBoxIndices.clear();
         selectedSegmentIndices.add(hitIndex);
         status.textContent = "Tool changed to select. 1 line selected.";
       } else {
+        selectedSegmentIndices.clear();
+        selectedSlabBoxIndices.clear();
         status.textContent = "Tool changed to select.";
       }
       redraw();
@@ -3939,29 +4443,49 @@
         for (let i = 0; i < segments.length; i += 1) {
           selectedSegmentIndices.add(i);
         }
+        selectedSlabBoxIndices = new Set();
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        for (let i = 0; i < slabBoxes.length; i += 1) {
+          if (slabBoxes[i] && isSlabTypeVisible(slabBoxes[i].type || "floor")) {
+            selectedSlabBoxIndices.add(i);
+          }
+        }
         isMarqueeSelecting = false;
         marqueeStartWorld = null;
         marqueeEndWorld = null;
         marqueeMode = "replace";
         dragState = null;
-        status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
+        status.textContent = `Selected ${selectedSegmentIndices.size} line(s) and ${selectedSlabBoxIndices.size} slab box(es).`;
         redraw();
       } else if (key === "delete" || key === "backspace" || key === "x") {
-        if (selectedSegmentIndices.size > 0) {
+        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
-          status.textContent = `Removed ${removedCount} selected line(s).`;
+          status.textContent = `Removed ${removedCount} selected item(s).`;
           redraw();
         }
       } else if (key === "w") {
         event.preventDefault();
         cycleToolGroup(["wall", "halfwall", "fakewall", "box"], "W group");
+      } else if (key === "b") {
+        event.preventDefault();
+        cycleToolGroup(["floorbox", "ceilingbox"], "B group");
       } else if (key === "s") {
         event.preventDefault();
         cycleToolGroup(["select", "erase"], "S group");
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox") && key === "q") {
+        event.preventDefault();
+        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - 15);
+        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        redraw();
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox") && key === "e") {
+        event.preventDefault();
+        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + 15);
+        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        redraw();
       }
     });
 
@@ -3982,8 +4506,11 @@
     });
 
     clearButton.addEventListener("click", () => {
-      const hasAnySegments = floors.some(level => Array.isArray(level.segments) && level.segments.length > 0);
-      if (!hasAnySegments) {
+      const hasAnyGeometry = floors.some(level =>
+        (Array.isArray(level.segments) && level.segments.length > 0)
+        || (Array.isArray(level.slabBoxes) && level.slabBoxes.length > 0)
+      );
+      if (!hasAnyGeometry) {
         status.textContent = "All levels are already empty.";
         return;
       }
@@ -3997,6 +4524,10 @@
       const undoBeforeClear = captureCurrentProjectSnapshot();
       for (let i = 0; i < floors.length; i += 1) {
         floors[i].segments.length = 0;
+        if (!Array.isArray(floors[i].slabBoxes)) {
+          floors[i].slabBoxes = [];
+        }
+        floors[i].slabBoxes.length = 0;
       }
       selectedSegmentIndices.clear();
       isMarqueeSelecting = false;
@@ -4035,6 +4566,8 @@
     toolDoorButton.addEventListener("click", () => setTool("door"));
     toolWindowButton.addEventListener("click", () => setTool("window"));
     toolCutButton.addEventListener("click", () => setTool("cut"));
+    toolFloorBoxButton.addEventListener("click", () => setTool("floorbox"));
+    toolCeilingBoxButton.addEventListener("click", () => setTool("ceilingbox"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 
@@ -4066,6 +4599,22 @@
       redraw();
     });
 
+    floorVisibilityToggleButton.addEventListener("click", () => {
+      isFloorBoxesVisible = !isFloorBoxesVisible;
+      updateSlabVisibilityButtons();
+      saveUiState();
+      status.textContent = isFloorBoxesVisible ? "Floor boxes visible." : "Floor boxes hidden.";
+      redraw();
+    });
+
+    ceilingVisibilityToggleButton.addEventListener("click", () => {
+      isCeilingBoxesVisible = !isCeilingBoxesVisible;
+      updateSlabVisibilityButtons();
+      saveUiState();
+      status.textContent = isCeilingBoxesVisible ? "Ceiling boxes visible." : "Ceiling boxes hidden.";
+      redraw();
+    });
+
     planTitleInput.addEventListener("input", () => {
       setPlanTitle(planTitleInput.value);
       queueLocalAutosave();
@@ -4084,6 +4633,10 @@
       redraw();
     });
     doorHeightInput.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
+    doorWidthInput.addEventListener("change", () => {
       queueLocalAutosave();
       redraw();
     });
@@ -4112,22 +4665,6 @@
       }
     });
 
-    slabPreviewToggleButton.addEventListener("click", () => {
-      isSlabPreviewVisible = !isSlabPreviewVisible;
-      updateSlabPreviewToggleButton();
-
-      if (isSlabPreviewVisible) {
-        const polygons = computeSlabPolygonsForLevel(segments);
-        status.textContent = polygons.length > 0
-          ? `Slab preview enabled. Closed regions detected: ${polygons.length}.`
-          : "Slab preview enabled. No closed regions detected on this level.";
-      } else {
-        status.textContent = "Slab preview hidden.";
-      }
-
-      redraw();
-    });
-
     exportPropsToggleButton.addEventListener("click", () => {
       isExportPropsOpen = !isExportPropsOpen;
       applyExportPropsVisibility();
@@ -4138,7 +4675,7 @@
     preloadPreview3dRuntime();
     setPlanTitle(planTitle);
     updateOnionToggleButton();
-    updateSlabPreviewToggleButton();
+    updateSlabVisibilityButtons();
     applyExportPropsVisibility();
     renderLevelList();
 
