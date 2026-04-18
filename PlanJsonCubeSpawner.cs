@@ -19,17 +19,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private float defaultGridSizeUnits = 1.0f;
 
     [Header("Prefab Length Setup")]
-    [SerializeField] private Axis lengthAxis = Axis.Z;
+    [SerializeField] private float prefabBaseLength = 1.0f;
 
     [Header("Debug")]
     [SerializeField] private bool logBuildSummary = true;
-
-    private enum Axis
-    {
-        X,
-        Y,
-        Z
-    }
 
     [Serializable]
     private class PlanData
@@ -230,13 +223,13 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         Vector3 worldPos = new Vector3(start.x, levelBaseY, start.y);
         Vector3 dir3 = new Vector3(delta.x / len, 0f, delta.y / len);
-        Quaternion rot = BuildRotationForLengthAxis(dir3);
+        Quaternion rot = BuildTopViewRotation(dir3);
         Vector3 scale = BuildScaledLength(prefab.transform.localScale, len);
 
         SpawnPrefab(prefab, worldPos, rot, scale);
     }
 
-    private Quaternion BuildRotationForLengthAxis(Vector3 direction)
+    private Quaternion BuildTopViewRotation(Vector3 direction)
     {
         Vector3 flatDirection = new Vector3(direction.x, 0f, direction.z);
         if (flatDirection.sqrMagnitude <= 0.000001f)
@@ -244,38 +237,19 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             return Quaternion.identity;
         }
 
+        // Unity top view uses XZ plane, with +Z as forward.
         float yaw = Mathf.Atan2(flatDirection.x, flatDirection.z) * Mathf.Rad2Deg;
-
-        switch (lengthAxis)
-        {
-            case Axis.X:
-                yaw -= 90f;
-                break;
-            case Axis.Y:
-                // Y cannot align with a horizontal segment using only yaw, so treat Z as length axis.
-                break;
-            case Axis.Z:
-            default:
-                break;
-        }
 
         return Quaternion.Euler(0f, yaw, 0f);
     }
 
     private Vector3 BuildScaledLength(Vector3 baseScale, float lineLength)
     {
-        switch (lengthAxis)
-        {
-            case Axis.X:
-                baseScale.x *= lineLength;
-                break;
-            case Axis.Y:
-                baseScale.y *= lineLength;
-                break;
-            default:
-                baseScale.z *= lineLength;
-                break;
-        }
+        float safeBaseLength = Mathf.Max(0.0001f, prefabBaseLength);
+        float lengthMultiplier = lineLength / safeBaseLength;
+
+        // Assumes all segment prefabs point forward (+Z) and have the same base length.
+        baseScale.z *= lengthMultiplier;
 
         return baseScale;
     }
