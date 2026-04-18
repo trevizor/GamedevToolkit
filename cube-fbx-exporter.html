@@ -434,6 +434,10 @@
         <button id="toolCeilingBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Ceiling Box</button>
         <button id="toolHalfWallBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Half Wall Box</button>
       </div>
+      <div class="tool-group" aria-label="R group tools">
+        <button id="toolRampBtn" type="button" class="secondary tool" title="Shortcut: R (cycles R group)">Ramp</button>
+        <button id="toolHalfRampBtn" type="button" class="secondary tool" title="Shortcut: R (cycles R group)">Half Ramp</button>
+      </div>
       <div class="tool-group" aria-label="S group tools">
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
       </div>
@@ -527,6 +531,8 @@
     const toolFloorBoxButton = document.getElementById("toolFloorBoxBtn");
     const toolCeilingBoxButton = document.getElementById("toolCeilingBoxBtn");
     const toolHalfWallBoxButton = document.getElementById("toolHalfWallBoxBtn");
+    const toolRampButton = document.getElementById("toolRampBtn");
+    const toolHalfRampButton = document.getElementById("toolHalfRampBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
@@ -558,11 +564,12 @@
     const preview3dCloseButton = document.getElementById("preview3dCloseBtn");
     const preview3dCanvas = document.getElementById("preview3dCanvas");
 
-    function createLevel(name, levelSegments, levelSlabBoxes) {
+    function createLevel(name, levelSegments, levelSlabBoxes, levelRamps) {
       return {
         name,
         segments: Array.isArray(levelSegments) ? levelSegments : [],
-        slabBoxes: Array.isArray(levelSlabBoxes) ? levelSlabBoxes : []
+        slabBoxes: Array.isArray(levelSlabBoxes) ? levelSlabBoxes : [],
+        ramps: Array.isArray(levelRamps) ? levelRamps : []
       };
     }
 
@@ -584,6 +591,7 @@
     let activeTool = "wall";
     let selectedSegmentIndices = new Set();
     let selectedSlabBoxIndices = new Set();
+    let selectedRampIndices = new Set();
     let isMarqueeSelecting = false;
     let marqueeStartWorld = null;
     let marqueeEndWorld = null;
@@ -613,6 +621,7 @@
       segments = floors[currentLevelIndex].segments;
       selectedSegmentIndices.clear();
       selectedSlabBoxIndices.clear();
+      selectedRampIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -701,6 +710,8 @@
       floorbox: toolFloorBoxButton,
       ceilingbox: toolCeilingBoxButton,
       halfwallbox: toolHalfWallBoxButton,
+      ramp: toolRampButton,
+      halframp: toolHalfRampButton,
       select: toolSelectButton,
       erase: toolEraseButton
     };
@@ -959,6 +970,14 @@
       return level.slabBoxes;
     }
 
+    function getCurrentLevelRamps() {
+      const level = getCurrentLevel();
+      if (!level.ramps) {
+        level.ramps = [];
+      }
+      return level.ramps;
+    }
+
     function normalizeRotationDegrees(value) {
       let normalized = Number(value);
       if (!Number.isFinite(normalized)) {
@@ -1054,6 +1073,119 @@
         }
       }
       return -1;
+    }
+
+    function findTopmostRampIndex(point, filterFn) {
+      const ramps = getCurrentLevelRamps();
+      for (let i = ramps.length - 1; i >= 0; i -= 1) {
+        const ramp = ramps[i];
+        if (!ramp) {
+          continue;
+        }
+        if (filterFn && !filterFn(ramp)) {
+          continue;
+        }
+        if (pointInSlabBox(point, ramp)) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function getSingleSelectedBoxHandleHit(pointerWorld) {
+      const totalSelected = selectedSlabBoxIndices.size + selectedRampIndices.size;
+      if (totalSelected !== 1) {
+        return null;
+      }
+
+      let kind = "slab";
+      let index = -1;
+      let box = null;
+
+      if (selectedSlabBoxIndices.size === 1) {
+        index = Array.from(selectedSlabBoxIndices)[0];
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        box = slabBoxes[index];
+        if (!box || !isSlabTypeVisible(box.type || "floor")) {
+          return null;
+        }
+      } else {
+        kind = "ramp";
+        index = Array.from(selectedRampIndices)[0];
+        const ramps = getCurrentLevelRamps();
+        box = ramps[index];
+        if (!box) {
+          return null;
+        }
+      }
+
+      const hx = Math.max(0.0005, Number(box.sx) * 0.5);
+      const hy = Math.max(0.0005, Number(box.sy) * 0.5);
+      const localNodes = [
+        { side: "left", x: -hx, y: 0 },
+        { side: "right", x: hx, y: 0 },
+        { side: "bottom", x: 0, y: -hy },
+        { side: "top", x: 0, y: hy }
+      ];
+
+      const worldNodes = localNodes.map(node => {
+        const offset = slabLocalToWorldOffset({ x: node.x, y: node.y }, box);
+        return {
+          side: node.side,
+          x: box.cx + offset.x,
+          y: box.cy + offset.y
+        };
+      });
+
+      const toleranceWorld = Math.max(0.2, 10 / Math.max(gridPx, 1));
+      let bestSide = null;
+      let bestDist = Infinity;
+      for (let i = 0; i < worldNodes.length; i += 1) {
+        const d = Math.hypot(pointerWorld.x - worldNodes[i].x, pointerWorld.y - worldNodes[i].y);
+        if (d < bestDist) {
+          bestDist = d;
+          bestSide = worldNodes[i].side;
+        }
+      }
+
+      if (bestDist > toleranceWorld) {
+        return null;
+      }
+
+      return {
+        kind,
+        index,
+        side: bestSide,
+        startBox: {
+          cx: box.cx,
+          cy: box.cy,
+          sx: box.sx,
+          sy: box.sy,
+          rotation: box.rotation
+        }
+      };
+    }
+
+    function buildMixedSelectionOriginals() {
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      const ramps = getCurrentLevelRamps();
+      return {
+        segments: Array.from(selectedSegmentIndices).map(idx => ({
+          index: idx,
+          a: clonePoint(segments[idx].a),
+          b: clonePoint(segments[idx].b)
+        })),
+        slabs: Array.from(selectedSlabBoxIndices).map(idx => ({
+          index: idx,
+          cx: slabBoxes[idx].cx,
+          cy: slabBoxes[idx].cy
+        })),
+        ramps: Array.from(selectedRampIndices).map(idx => ({
+          index: idx,
+          cx: ramps[idx].cx,
+          cy: ramps[idx].cy
+        }))
+      };
     }
 
     function getSingleSelectedSlabHandleHit(pointerWorld) {
@@ -1184,9 +1316,131 @@
       };
     }
 
+    function createRampFromDrag(fromGrid, toGrid, rampType) {
+      const minX = Math.min(fromGrid.x, toGrid.x);
+      const maxX = Math.max(fromGrid.x, toGrid.x);
+      const minY = Math.min(fromGrid.y, toGrid.y);
+      const maxY = Math.max(fromGrid.y, toGrid.y);
+      const sx = Math.max(1, maxX - minX);
+      const sy = Math.max(1, maxY - minY);
+      const fromLevel = currentLevelIndex;
+      const isHalfRamp = rampType === "half";
+      const toLevel = isHalfRamp ? currentLevelIndex : Math.min(floors.length - 1, currentLevelIndex + 1);
+
+      return {
+        type: isHalfRamp ? "half" : "full",
+        cx: (minX + maxX) * 0.5,
+        cy: (minY + maxY) * 0.5,
+        sx,
+        sy,
+        rotation: normalizeRotationDegrees(Math.round(slabPlacementRotationDeg / 90) * 90),
+        fromLevel,
+        toLevel
+      };
+    }
+
+    function snapRampCenterToGridAxis(value, span) {
+      // Even-sized spans center on whole grid points; odd-sized spans center on half points.
+      if (span % 2 === 0) {
+        return Math.round(value);
+      }
+      return Math.floor(value) + 0.5;
+    }
+
+    function snapRampToGrid(ramp) {
+      if (!ramp) {
+        return;
+      }
+
+      const sx = Math.max(1, Math.round(Number(ramp.sx) || 1));
+      const sy = Math.max(1, Math.round(Number(ramp.sy) || 1));
+      const rot = normalizeRotationDegrees(Math.round((Number(ramp.rotation) || 0) / 90) * 90);
+
+      ramp.sx = sx;
+      ramp.sy = sy;
+      ramp.rotation = rot;
+
+      const quarterTurns = Math.round(rot / 90) % 4;
+      const xSpan = quarterTurns % 2 === 0 ? sx : sy;
+      const ySpan = quarterTurns % 2 === 0 ? sy : sx;
+
+      ramp.cx = snapRampCenterToGridAxis(Number(ramp.cx) || 0, xSpan);
+      ramp.cy = snapRampCenterToGridAxis(Number(ramp.cy) || 0, ySpan);
+    }
+
+    function drawRamps(ramps, options) {
+      if (!Array.isArray(ramps) || ramps.length === 0) {
+        return;
+      }
+
+      const alpha = options && Number.isFinite(options.alpha) ? options.alpha : 1;
+      const isCurrent = !!(options && options.isCurrent);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      for (let i = 0; i < ramps.length; i += 1) {
+        const ramp = ramps[i];
+        if (!ramp) {
+          continue;
+        }
+        const corners = getSlabBoxCorners(ramp);
+        if (corners.length !== 4) {
+          continue;
+        }
+
+        ctx.beginPath();
+        const p0 = gridToCanvas(corners[0]);
+        ctx.moveTo(p0.x, p0.y);
+        for (let c = 1; c < corners.length; c += 1) {
+          const pc = gridToCanvas(corners[c]);
+          ctx.lineTo(pc.x, pc.y);
+        }
+        ctx.closePath();
+        const isHalfRamp = (ramp.type || "full") === "half";
+        ctx.fillStyle = isHalfRamp
+          ? (isCurrent ? "rgba(251,113,133,0.20)" : "rgba(251,113,133,0.14)")
+          : (isCurrent ? "rgba(245,158,11,0.20)" : "rgba(251,191,36,0.14)");
+        ctx.strokeStyle = isHalfRamp
+          ? (isCurrent ? "#9f1239" : "#e11d48")
+          : (isCurrent ? "#b45309" : "#f59e0b");
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+
+        const angleRad = normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
+        const dir = { x: Math.sin(angleRad), y: Math.cos(angleRad) };
+        const start = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25, y: ramp.cy - dir.y * ramp.sy * 0.25 });
+        const end = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25, y: ramp.cy + dir.y * ramp.sy * 0.25 });
+        const toLevel = Number.isFinite(Number(ramp.toLevel)) ? Number(ramp.toLevel) : currentLevelIndex;
+        const fromLevel = Number.isFinite(Number(ramp.fromLevel)) ? Number(ramp.fromLevel) : currentLevelIndex;
+        const rises = isHalfRamp || toLevel > fromLevel;
+
+        ctx.strokeStyle = rises ? "#92400e" : "#9ca3af";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+
+        const arrowAngle = Math.atan2(end.y - start.y, end.x - start.x);
+        const ah = 8;
+        ctx.beginPath();
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - Math.cos(arrowAngle - Math.PI / 6) * ah, end.y - Math.sin(arrowAngle - Math.PI / 6) * ah);
+        ctx.lineTo(end.x - Math.cos(arrowAngle + Math.PI / 6) * ah, end.y - Math.sin(arrowAngle + Math.PI / 6) * ah);
+        ctx.closePath();
+        ctx.fillStyle = rises ? "#92400e" : "#9ca3af";
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
     function drawSegments() {
       if (!isOnionViewEnabled) {
         drawSlabBoxes(getCurrentLevel().slabBoxes || [], { alpha: 1, isCurrent: true });
+        drawRamps(getCurrentLevel().ramps || [], { alpha: 1, isCurrent: true });
         drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
         return;
       }
@@ -1196,14 +1450,17 @@
 
       if (below) {
         drawSlabBoxes(below.slabBoxes || [], { alpha: 0.7, isCurrent: false });
+        drawRamps(below.ramps || [], { alpha: 0.65, isCurrent: false });
         drawFloorSegments(below.segments, { alpha: 0.8, tintColor: "#9ca3af", isCurrent: false });
       }
 
       drawSlabBoxes(getCurrentLevel().slabBoxes || [], { alpha: 1, isCurrent: true });
+      drawRamps(getCurrentLevel().ramps || [], { alpha: 1, isCurrent: true });
       drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
 
       if (above) {
         drawSlabBoxes(above.slabBoxes || [], { alpha: 0.65, isCurrent: false });
+        drawRamps(above.ramps || [], { alpha: 0.6, isCurrent: false });
         drawFloorSegments(above.segments, { alpha: 0.7, tintColor: "#93c5fd", isCurrent: false });
       }
     }
@@ -1313,7 +1570,7 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
           if (points.length >= 3) {
@@ -1364,6 +1621,22 @@
           ctx.lineWidth = 2;
           ctx.strokeStyle = activeTool === "ceilingbox" ? "#2563eb" : activeTool === "halfwallbox" ? "#0e7490" : "#059669";
           ctx.fillStyle = activeTool === "ceilingbox" ? "rgba(59,130,246,0.16)" : activeTool === "halfwallbox" ? "rgba(14,116,144,0.16)" : "rgba(16,185,129,0.16)";
+          ctx.beginPath();
+          const p0 = gridToCanvas(corners[0]);
+          ctx.moveTo(p0.x, p0.y);
+          for (let i = 1; i < corners.length; i += 1) {
+            const p = gridToCanvas(corners[i]);
+            ctx.lineTo(p.x, p.y);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else if (activeTool === "ramp" || activeTool === "halframp") {
+          const previewRamp = createRampFromDrag(startGrid, pointerGrid, activeTool === "halframp" ? "half" : "full");
+          const corners = getSlabBoxCorners(previewRamp);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = activeTool === "halframp" ? "#9f1239" : "#b45309";
+          ctx.fillStyle = activeTool === "halframp" ? "rgba(251,113,133,0.18)" : "rgba(245,158,11,0.18)";
           ctx.beginPath();
           const p0 = gridToCanvas(corners[0]);
           ctx.moveTo(p0.x, p0.y);
@@ -1456,20 +1729,32 @@
         }
       }
 
-      if (activeTool === "select" && selectedSlabBoxIndices.size > 0) {
+      if (activeTool === "select" && (selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0)) {
         const slabBoxes = getCurrentLevelSlabBoxes();
-        const indices = Array.from(selectedSlabBoxIndices);
-        for (let i = 0; i < indices.length; i += 1) {
-          const box = slabBoxes[indices[i]];
+        const ramps = getCurrentLevelRamps();
+        const slabIndices = Array.from(selectedSlabBoxIndices);
+        const rampIndices = Array.from(selectedRampIndices);
+        const selectedBoxes = slabIndices.map(index => ({ kind: "slab", index, box: slabBoxes[index] }))
+          .concat(rampIndices.map(index => ({ kind: "ramp", index, box: ramps[index] })));
+
+        for (let i = 0; i < selectedBoxes.length; i += 1) {
+          const entry = selectedBoxes[i];
+          const box = entry.box;
           if (!box || !isSlabTypeVisible(box.type || "floor")) {
-            continue;
+            if (entry.kind === "slab") {
+              continue;
+            }
           }
           const corners = getSlabBoxCorners(box);
           if (corners.length !== 4) {
             continue;
           }
 
-          const stroke = box.type === "ceiling" ? "#1d4ed8" : "#047857";
+          const stroke = entry.kind === "ramp"
+            ? "#b45309"
+            : box.type === "ceiling"
+              ? "#1d4ed8"
+              : "#047857";
           ctx.save();
           ctx.strokeStyle = stroke;
           ctx.lineWidth = 2.5;
@@ -1486,10 +1771,12 @@
           ctx.restore();
         }
 
-        if (selectedSlabBoxIndices.size === 1) {
-          const index = indices[0];
-          const box = slabBoxes[index];
-          if (box && isSlabTypeVisible(box.type || "floor")) {
+        if (selectedSlabBoxIndices.size + selectedRampIndices.size === 1) {
+          const selectedEntry = selectedSlabBoxIndices.size === 1
+            ? { kind: "slab", index: slabIndices[0], box: slabBoxes[slabIndices[0]] }
+            : { kind: "ramp", index: rampIndices[0], box: ramps[rampIndices[0]] };
+          const box = selectedEntry.box;
+          if (box && (selectedEntry.kind === "ramp" || isSlabTypeVisible(box.type || "floor"))) {
             const hx = Math.max(0.0005, Number(box.sx) * 0.5);
             const hy = Math.max(0.0005, Number(box.sy) * 0.5);
             const sideNodesLocal = [
@@ -1500,7 +1787,11 @@
             ];
             ctx.save();
             ctx.fillStyle = "#ffffff";
-            ctx.strokeStyle = box.type === "ceiling" ? "#1d4ed8" : "#047857";
+            ctx.strokeStyle = selectedEntry.kind === "ramp"
+              ? "#b45309"
+              : box.type === "ceiling"
+                ? "#1d4ed8"
+                : "#047857";
             ctx.lineWidth = 2;
             for (let c = 0; c < sideNodesLocal.length; c += 1) {
               const worldOffset = slabLocalToWorldOffset(sideNodesLocal[c], box);
@@ -1538,7 +1829,10 @@
       const floorSlabCount = slabBoxes.filter(box => box && box.type === "floor").length;
       const ceilingSlabCount = slabBoxes.filter(box => box && box.type === "ceiling").length;
       const halfWallSlabCount = slabBoxes.filter(box => box && box.type === "halfwall").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount} | Half Wall Boxes: ${halfWallSlabCount}`;
+      const ramps = getCurrentLevel().ramps || [];
+      const rampCount = ramps.filter(ramp => ramp && (ramp.type || "full") !== "half").length;
+      const halfRampCount = ramps.filter(ramp => ramp && (ramp.type || "full") === "half").length;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount} | Half Wall Boxes: ${halfWallSlabCount} | Ramps: ${rampCount} | Half Ramps: ${halfRampCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -1696,9 +1990,70 @@
         }
       }
 
-      if (drag.mode === "resize-slab-side" && drag.startBox) {
+      if (drag.mode === "move-ramp-selection" && Array.isArray(drag.originals)) {
+        const ramps = getCurrentLevelRamps();
+        for (let i = 0; i < drag.originals.length; i += 1) {
+          const original = drag.originals[i];
+          const ramp = ramps[original.index];
+          if (!ramp) {
+            continue;
+          }
+          if (Math.hypot(ramp.cx - original.cx, ramp.cy - original.cy) > 1e-9) {
+            return true;
+          }
+        }
+      }
+
+      if (drag.mode === "move-mixed-selection" && drag.originals) {
         const slabBoxes = getCurrentLevelSlabBoxes();
-        const box = slabBoxes[drag.index];
+        const ramps = getCurrentLevelRamps();
+
+        if (Array.isArray(drag.originals.segments)) {
+          for (let i = 0; i < drag.originals.segments.length; i += 1) {
+            const original = drag.originals.segments[i];
+            const seg = segments[original.index];
+            if (!seg) {
+              continue;
+            }
+            if (Math.hypot(seg.a.x - original.a.x, seg.a.y - original.a.y) > 1e-9) {
+              return true;
+            }
+            if (Math.hypot(seg.b.x - original.b.x, seg.b.y - original.b.y) > 1e-9) {
+              return true;
+            }
+          }
+        }
+
+        if (Array.isArray(drag.originals.slabs)) {
+          for (let i = 0; i < drag.originals.slabs.length; i += 1) {
+            const original = drag.originals.slabs[i];
+            const box = slabBoxes[original.index];
+            if (!box) {
+              continue;
+            }
+            if (Math.hypot(box.cx - original.cx, box.cy - original.cy) > 1e-9) {
+              return true;
+            }
+          }
+        }
+
+        if (Array.isArray(drag.originals.ramps)) {
+          for (let i = 0; i < drag.originals.ramps.length; i += 1) {
+            const original = drag.originals.ramps[i];
+            const ramp = ramps[original.index];
+            if (!ramp) {
+              continue;
+            }
+            if (Math.hypot(ramp.cx - original.cx, ramp.cy - original.cy) > 1e-9) {
+              return true;
+            }
+          }
+        }
+      }
+
+      if (drag.mode === "resize-box-side" && drag.startBox) {
+        const source = drag.kind === "ramp" ? getCurrentLevelRamps() : getCurrentLevelSlabBoxes();
+        const box = source[drag.index];
         if (!box) {
           return false;
         }
@@ -1721,6 +2076,7 @@
       startGrid = null;
       selectedSegmentIndices.clear();
       selectedSlabBoxIndices.clear();
+      selectedRampIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -1744,6 +2100,8 @@
 
       if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         status.textContent = `Tool changed to ${activeTool}. Drag to place box. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
+      } else if (activeTool === "ramp" || activeTool === "halframp") {
+        status.textContent = `Tool changed to ${activeTool === "halframp" ? "half ramp" : "ramp"}. Drag to place ramp. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
       } else {
         status.textContent = `Tool changed to ${activeTool}.`;
       }
@@ -1771,7 +2129,7 @@
     }
 
     function deleteSelectedSegments() {
-      if (selectedSegmentIndices.size === 0 && selectedSlabBoxIndices.size === 0) {
+      if (selectedSegmentIndices.size === 0 && selectedSlabBoxIndices.size === 0 && selectedRampIndices.size === 0) {
         return 0;
       }
 
@@ -1792,9 +2150,18 @@
         }
       }
 
-      const removedCount = indices.length + slabIndices.length;
+      const ramps = getCurrentLevelRamps();
+      const rampIndices = Array.from(selectedRampIndices).sort((a, b) => b - a);
+      for (let i = 0; i < rampIndices.length; i += 1) {
+        if (rampIndices[i] >= 0 && rampIndices[i] < ramps.length) {
+          ramps.splice(rampIndices[i], 1);
+        }
+      }
+
+      const removedCount = indices.length + slabIndices.length + rampIndices.length;
       selectedSegmentIndices.clear();
       selectedSlabBoxIndices.clear();
+      selectedRampIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -2323,6 +2690,18 @@
           sx: Number(box.sx),
           sy: Number(box.sy),
           rotation: Number(box.rotation) || 0
+        })),
+        ramps: (Array.isArray(floor.ramps) ? floor.ramps : []).map(ramp => ({
+          type: ramp.type === "half" ? "half" : "full",
+          cx: Number(ramp.cx),
+          cy: Number(ramp.cy),
+          sx: Number(ramp.sx),
+          sy: Number(ramp.sy),
+          rotation: Number(ramp.rotation) || 0,
+          fromLevel: Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : index,
+          toLevel: Number.isInteger(ramp.toLevel)
+            ? ramp.toLevel
+            : (ramp.type === "half" ? index : Math.min(index + 1, floors.length - 1))
         }))
       }));
 
@@ -2456,6 +2835,43 @@
         return out;
       };
 
+      const sanitizeRamps = (rawRamps, defaultLevel) => {
+        const out = [];
+        if (!Array.isArray(rawRamps)) {
+          return out;
+        }
+        for (let i = 0; i < rawRamps.length; i += 1) {
+          const ramp = rawRamps[i];
+          if (!ramp) {
+            continue;
+          }
+          const cx = Number(ramp.cx);
+          const cy = Number(ramp.cy);
+          const sx = Number(ramp.sx);
+          const sy = Number(ramp.sy);
+          const rotation = Number(ramp.rotation);
+          if (![cx, cy, sx, sy].every(Number.isFinite)) {
+            continue;
+          }
+          const fromLevel = Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : defaultLevel;
+          const rampType = ramp.type === "half" ? "half" : "full";
+          const toLevel = Number.isInteger(ramp.toLevel)
+            ? ramp.toLevel
+            : (rampType === "half" ? defaultLevel : (defaultLevel + 1));
+          out.push({
+            type: rampType,
+            cx,
+            cy,
+            sx: Math.max(0.001, sx),
+            sy: Math.max(0.001, sy),
+            rotation: Number.isFinite(rotation) ? rotation : 0,
+            fromLevel: Math.max(0, fromLevel),
+            toLevel: Math.max(0, toLevel)
+          });
+        }
+        return out;
+      };
+
       let loadedFloors = [];
 
       if (Array.isArray(data.floors) && data.floors.length > 0) {
@@ -2464,16 +2880,17 @@
             ? floor.name.trim()
             : buildLevelDefaultName(index),
           sanitizeSegments(floor ? floor.segments : []),
-          sanitizeSlabBoxes(floor ? floor.slabBoxes : [])
+          sanitizeSlabBoxes(floor ? floor.slabBoxes : []),
+          sanitizeRamps(floor ? floor.ramps : [], index)
         ));
       } else if (Array.isArray(data.segments)) {
-        loadedFloors = [createLevel("Level 1", sanitizeSegments(data.segments), [])];
+        loadedFloors = [createLevel("Level 1", sanitizeSegments(data.segments), [], [])];
       } else {
         throw new Error("Invalid plan file.");
       }
 
       if (loadedFloors.length === 0) {
-        loadedFloors = [createLevel("Level 1", [], [])];
+        loadedFloors = [createLevel("Level 1", [], [], [])];
       }
 
       floors.length = 0;
@@ -2524,6 +2941,7 @@
 
       selectedSegmentIndices.clear();
       selectedSlabBoxIndices.clear();
+      selectedRampIndices.clear();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -3631,7 +4049,8 @@
         meshData.vertices.push(v0, v1, v2, v3, v4, v5, v6, v7);
 
         const pushFace = (a, b, c) => {
-          meshData.faces.push([offset + a, offset + b, offset + c]);
+          // Ramp faces were wound opposite to the rest of the mesh; flip winding for correct outward normals.
+          meshData.faces.push([offset + a, offset + c, offset + b]);
           meshData.faceGroups.push(group);
         };
 
@@ -3649,11 +4068,71 @@
         pushFace(3, 4, 0);
       }
 
+      function appendRampWedge(cx, cz, sx, sz, startY, endY, rotationDeg, group) {
+        if (!Number.isFinite(cx) || !Number.isFinite(cz) || !Number.isFinite(sx) || !Number.isFinite(sz)) {
+          return;
+        }
+        if (sx <= 1e-6 || sz <= 1e-6 || Math.abs(endY - startY) <= 1e-6) {
+          return;
+        }
+
+        const angle = (Number(rotationDeg) || 0) * Math.PI / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const hx = sx * 0.5;
+        const hz = sz * 0.5;
+        const local = [
+          [-hx, -hz],
+          [hx, -hz],
+          [hx, hz],
+          [-hx, hz]
+        ];
+
+        const corners = local.map(p => [
+          cx + p[0] * cos - p[1] * sin,
+          cz + p[0] * sin + p[1] * cos
+        ]);
+
+        const v0 = [corners[0][0], startY, corners[0][1]];
+        const v1 = [corners[1][0], startY, corners[1][1]];
+        const v2 = [corners[2][0], endY, corners[2][1]];
+        const v3 = [corners[3][0], endY, corners[3][1]];
+        const v4 = [corners[0][0], startY, corners[0][1]];
+        const v5 = [corners[1][0], startY, corners[1][1]];
+        const v6 = [corners[2][0], startY, corners[2][1]];
+        const v7 = [corners[3][0], startY, corners[3][1]];
+
+        const offset = meshData.vertices.length;
+        meshData.vertices.push(v0, v1, v2, v3, v4, v5, v6, v7);
+
+        const pushFace = (a, b, c) => {
+          meshData.faces.push([offset + a, offset + b, offset + c]);
+          meshData.faceGroups.push(group);
+        };
+
+        // Top slope
+        pushFace(0, 1, 2);
+        pushFace(0, 2, 3);
+        // Bottom
+        pushFace(4, 6, 5);
+        pushFace(4, 7, 6);
+        // Sides
+        pushFace(0, 4, 5);
+        pushFace(0, 5, 1);
+        pushFace(1, 5, 6);
+        pushFace(1, 6, 2);
+        pushFace(2, 6, 7);
+        pushFace(2, 7, 3);
+        pushFace(3, 7, 4);
+        pushFace(3, 4, 0);
+      }
+
       for (let i = 0; i < floors.length; i += 1) {
         const floor = floors[i];
         const hasSegments = floor.segments && floor.segments.length > 0;
         const hasSlabs = floor.slabBoxes && floor.slabBoxes.length > 0;
-        if (!hasSegments && !hasSlabs) {
+        const hasRamps = floor.ramps && floor.ramps.length > 0;
+        if (!hasSegments && !hasSlabs && !hasRamps) {
           continue;
         }
 
@@ -3712,6 +4191,29 @@
             }
           }
         }
+
+        if (hasRamps) {
+          for (let r = 0; r < floor.ramps.length; r += 1) {
+            const ramp = floor.ramps[r];
+            if (!ramp) {
+              continue;
+            }
+
+            const cx = Number(ramp.cx) * GRID_SIZE_UNITS;
+            const cz = Number(ramp.cy) * GRID_SIZE_UNITS;
+            const sx = Number(ramp.sx) * GRID_SIZE_UNITS;
+            const sz = Number(ramp.sy) * GRID_SIZE_UNITS;
+            const rotation = Number(ramp.rotation) || 0;
+            const rampType = ramp.type === "half" ? "half" : "full";
+            const fromLevel = Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : i;
+            const toLevel = Number.isInteger(ramp.toLevel) ? ramp.toLevel : (i + 1);
+            const startY = fromLevel * floorStride;
+            const endY = rampType === "half"
+              ? startY + getWallHeight() * HALF_WALL_HEIGHT_FACTOR + slabYOffset
+              : toLevel * floorStride;
+            appendRampWedge(cx, cz, sx, sz, startY, endY, rotation, "floor");
+          }
+        }
       }
 
       return meshData;
@@ -3721,6 +4223,7 @@
       const hasAnyGeometry = floors.some(floor =>
         (Array.isArray(floor.segments) && floor.segments.length > 0)
         || (Array.isArray(floor.slabBoxes) && floor.slabBoxes.length > 0)
+        || (Array.isArray(floor.ramps) && floor.ramps.length > 0)
       );
       if (!hasAnyGeometry) {
         status.textContent = "Draw lines or place floor/ceiling boxes before exporting.";
@@ -3829,9 +4332,10 @@
       const hasAnyGeometry = floors.some(floor =>
         (Array.isArray(floor.segments) && floor.segments.length > 0)
         || (Array.isArray(floor.slabBoxes) && floor.slabBoxes.length > 0)
+        || (Array.isArray(floor.ramps) && floor.ramps.length > 0)
       );
       if (!hasAnyGeometry) {
-        status.textContent = "Draw lines or place floor/ceiling boxes before opening 3D preview.";
+        status.textContent = "Draw lines or place slabs/ramps before opening 3D preview.";
         return;
       }
 
@@ -4006,46 +4510,80 @@
       if (activeTool === "select") {
         const hitIndex = findNearestSegmentIndex(pointerGrid, () => true);
         const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
+        const rampHitIndex = findTopmostRampIndex(pointerWorld, () => true);
         const addMode = event.shiftKey;
         const removeMode = event.ctrlKey;
         const endpointHit = !addMode && !removeMode ? getSingleSelectedEndpointHit(pointerWorld) : null;
-        const slabHandleHit = !addMode && !removeMode ? getSingleSelectedSlabHandleHit(pointerWorld) : null;
+        const boxHandleHit = !addMode && !removeMode ? getSingleSelectedBoxHandleHit(pointerWorld) : null;
 
-        if (slabHandleHit) {
+        if (boxHandleHit) {
           dragState = {
-            mode: "resize-slab-side",
-            index: slabHandleHit.index,
-            side: slabHandleHit.side,
+            mode: "resize-box-side",
+            kind: boxHandleHit.kind,
+            index: boxHandleHit.index,
+            side: boxHandleHit.side,
             startPointer: clonePoint(pointerGrid),
-            startBox: slabHandleHit.startBox,
+            startBox: boxHandleHit.startBox,
             undoSnapshot: captureCurrentProjectSnapshot()
           };
-          status.textContent = "Drag slab side node to move that edge.";
+          status.textContent = boxHandleHit.kind === "ramp" ? "Drag ramp side node to move that edge." : "Drag slab side node to move that edge.";
+          redraw();
+          return;
+        }
+
+        if (rampHitIndex >= 0 && !addMode && !removeMode) {
+          if (!selectedRampIndices.has(rampHitIndex)) {
+            if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+              selectedRampIndices.add(rampHitIndex);
+            } else {
+              selectedRampIndices.clear();
+              selectedRampIndices.add(rampHitIndex);
+              selectedSegmentIndices.clear();
+              selectedSlabBoxIndices.clear();
+            }
+          }
+
+          dragState = {
+            mode: "move-mixed-selection",
+            startPointer: clonePoint(pointerGrid),
+            undoSnapshot: captureCurrentProjectSnapshot(),
+            originals: buildMixedSelectionOriginals()
+          };
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s). Drag to move.`;
+          redraw();
+          return;
+        } else if (rampHitIndex >= 0 && (addMode || removeMode)) {
+          if (addMode) {
+            selectedRampIndices.add(rampHitIndex);
+          }
+          if (removeMode) {
+            selectedRampIndices.delete(rampHitIndex);
+          }
+          dragState = null;
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
           redraw();
           return;
         }
 
         if (slabHitIndex >= 0 && !addMode && !removeMode) {
           if (!selectedSlabBoxIndices.has(slabHitIndex)) {
-            selectedSlabBoxIndices.clear();
-            selectedSlabBoxIndices.add(slabHitIndex);
-            selectedSegmentIndices.clear();
+            if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+              selectedSlabBoxIndices.add(slabHitIndex);
+            } else {
+              selectedSlabBoxIndices.clear();
+              selectedSlabBoxIndices.add(slabHitIndex);
+              selectedSegmentIndices.clear();
+              selectedRampIndices.clear();
+            }
           }
 
-          const selected = Array.from(selectedSlabBoxIndices);
-          const slabBoxes = getCurrentLevelSlabBoxes();
           dragState = {
-            mode: "move-slab-selection",
-            indices: selected,
+            mode: "move-mixed-selection",
             startPointer: clonePoint(pointerGrid),
             undoSnapshot: captureCurrentProjectSnapshot(),
-            originals: selected.map(idx => ({
-              index: idx,
-              cx: slabBoxes[idx].cx,
-              cy: slabBoxes[idx].cy
-            }))
+            originals: buildMixedSelectionOriginals()
           };
-          status.textContent = `Selected ${selectedSlabBoxIndices.size} slab box(es). Drag to move.`;
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s). Drag to move.`;
           redraw();
           return;
         } else if (slabHitIndex >= 0 && (addMode || removeMode)) {
@@ -4055,9 +4593,8 @@
           if (removeMode) {
             selectedSlabBoxIndices.delete(slabHitIndex);
           }
-          selectedSegmentIndices.clear();
           dragState = null;
-          status.textContent = `Selected ${selectedSlabBoxIndices.size} slab box(es).`;
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
           redraw();
           return;
         }
@@ -4078,24 +4615,23 @@
 
         if (hitIndex >= 0 && !addMode && !removeMode) {
           if (!selectedSegmentIndices.has(hitIndex)) {
-            selectedSegmentIndices.clear();
-            selectedSegmentIndices.add(hitIndex);
-            selectedSlabBoxIndices.clear();
+            if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+              selectedSegmentIndices.add(hitIndex);
+            } else {
+              selectedSegmentIndices.clear();
+              selectedSegmentIndices.add(hitIndex);
+              selectedSlabBoxIndices.clear();
+              selectedRampIndices.clear();
+            }
           }
 
-          const selected = Array.from(selectedSegmentIndices);
           dragState = {
-            mode: "move-selection",
-            indices: selected,
+            mode: "move-mixed-selection",
             startPointer: clonePoint(pointerGrid),
             undoSnapshot: captureCurrentProjectSnapshot(),
-            originals: selected.map(idx => ({
-              index: idx,
-              a: clonePoint(segments[idx].a),
-              b: clonePoint(segments[idx].b)
-            }))
+            originals: buildMixedSelectionOriginals()
           };
-          status.textContent = `Selected ${selectedSegmentIndices.size} line(s). Drag to move.`;
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s). Drag to move.`;
         } else if (hitIndex >= 0 && (addMode || removeMode)) {
           if (addMode) {
             selectedSegmentIndices.add(hitIndex);
@@ -4103,13 +4639,13 @@
           if (removeMode) {
             selectedSegmentIndices.delete(hitIndex);
           }
-          selectedSlabBoxIndices.clear();
           dragState = null;
-          status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         } else {
           if (!addMode && !removeMode) {
             selectedSegmentIndices.clear();
             selectedSlabBoxIndices.clear();
+            selectedRampIndices.clear();
           }
           isMarqueeSelecting = true;
           marqueeStartWorld = clonePoint(pointerWorld);
@@ -4148,7 +4684,7 @@
         return;
       }
 
-      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
+      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp") {
         startGrid = clonePoint(pointerGrid);
         drawing = true;
         redraw();
@@ -4240,9 +4776,57 @@
             box.cx = original.cx + dx;
             box.cy = original.cy + dy;
           }
-        } else if (dragState.mode === "resize-slab-side") {
+        } else if (dragState.mode === "move-ramp-selection") {
+          const ramps = getCurrentLevelRamps();
+          for (let i = 0; i < dragState.originals.length; i += 1) {
+            const original = dragState.originals[i];
+            const ramp = ramps[original.index];
+            if (!ramp) {
+              continue;
+            }
+            ramp.cx = original.cx + dx;
+            ramp.cy = original.cy + dy;
+            snapRampToGrid(ramp);
+          }
+        } else if (dragState.mode === "move-mixed-selection") {
           const slabBoxes = getCurrentLevelSlabBoxes();
-          const box = slabBoxes[dragState.index];
+          const ramps = getCurrentLevelRamps();
+
+          for (let i = 0; i < dragState.originals.segments.length; i += 1) {
+            const original = dragState.originals.segments[i];
+            const seg = segments[original.index];
+            if (!seg) {
+              continue;
+            }
+            seg.a.x = original.a.x + dx;
+            seg.a.y = original.a.y + dy;
+            seg.b.x = original.b.x + dx;
+            seg.b.y = original.b.y + dy;
+          }
+
+          for (let i = 0; i < dragState.originals.slabs.length; i += 1) {
+            const original = dragState.originals.slabs[i];
+            const box = slabBoxes[original.index];
+            if (!box) {
+              continue;
+            }
+            box.cx = original.cx + dx;
+            box.cy = original.cy + dy;
+          }
+
+          for (let i = 0; i < dragState.originals.ramps.length; i += 1) {
+            const original = dragState.originals.ramps[i];
+            const ramp = ramps[original.index];
+            if (!ramp) {
+              continue;
+            }
+            ramp.cx = original.cx + dx;
+            ramp.cy = original.cy + dy;
+            snapRampToGrid(ramp);
+          }
+        } else if (dragState.mode === "resize-box-side") {
+          const source = dragState.kind === "ramp" ? getCurrentLevelRamps() : getCurrentLevelSlabBoxes();
+          const box = source[dragState.index];
           if (!box) {
             redraw();
             return;
@@ -4277,6 +4861,9 @@
           box.cy = dragState.startBox.cy + worldCenterOffset.y;
           box.sx = Math.max(1, maxX - minX);
           box.sy = Math.max(1, maxY - minY);
+          if (dragState.kind === "ramp") {
+            snapRampToGrid(box);
+          }
         }
 
         queueLocalAutosave();
@@ -4307,6 +4894,7 @@
           if (marqueeMode === "replace") {
             selectedSegmentIndices.clear();
             selectedSlabBoxIndices.clear();
+            selectedRampIndices.clear();
           }
 
           if (marqueeMode === "add" || marqueeMode === "replace") {
@@ -4319,7 +4907,7 @@
             }
           }
 
-          status.textContent = `Selected ${selectedSegmentIndices.size} line(s).`;
+          status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         } else if (dragState) {
           if (dragState.mode === "move-endpoint") {
             const changed = didDragChangeGeometry(dragState);
@@ -4328,16 +4916,26 @@
               recordUndoSnapshot(dragState.undoSnapshot);
             }
             status.textContent = merged ? "Lines merged." : "Line endpoint moved.";
+          } else if (dragState.mode === "move-mixed-selection") {
+            if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
+              recordUndoSnapshot(dragState.undoSnapshot);
+            }
+            status.textContent = `Moved ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
           } else if (dragState.mode === "move-slab-selection") {
             if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
               recordUndoSnapshot(dragState.undoSnapshot);
             }
             status.textContent = `Moved ${selectedSlabBoxIndices.size} slab box(es).`;
-          } else if (dragState.mode === "resize-slab-side") {
+          } else if (dragState.mode === "move-ramp-selection") {
             if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
               recordUndoSnapshot(dragState.undoSnapshot);
             }
-            status.textContent = "Slab side moved.";
+            status.textContent = `Moved ${selectedRampIndices.size} ramp(s).`;
+          } else if (dragState.mode === "resize-box-side") {
+            if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
+              recordUndoSnapshot(dragState.undoSnapshot);
+            }
+            status.textContent = dragState.kind === "ramp" ? "Ramp side moved." : "Slab side moved.";
           } else {
             if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
               recordUndoSnapshot(dragState.undoSnapshot);
@@ -4407,6 +5005,20 @@
         queueLocalAutosave();
         const slabLabel = slabType === "ceiling" ? "Ceiling" : slabType === "halfwall" ? "Half wall" : "Floor";
         status.textContent = `${slabLabel} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
+      } else if (activeTool === "ramp" || activeTool === "halframp") {
+        if (activeTool === "ramp" && currentLevelIndex >= floors.length - 1) {
+          status.textContent = "Ramp requires an upper level. Add a level above first.";
+        } else {
+          const ramps = getCurrentLevelRamps();
+          const ramp = createRampFromDrag(startGrid, endGrid, activeTool === "halframp" ? "half" : "full");
+          ramps.push(ramp);
+          queueLocalAutosave();
+          if ((ramp.type || "full") === "half") {
+            status.textContent = `Half ramp added on level ${ramp.fromLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
+          } else {
+            status.textContent = `Ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
+          }
+        }
       } else if (activeTool === "ellipse") {
         const forceCircle = ellipseForceCircle || event.ctrlKey;
         const addedCount = addEllipseAsWalls(startGrid, endGrid, forceCircle);
@@ -4459,19 +5071,29 @@
       const pointerWorld = canvasToWorld(p.x, p.y);
       const hitIndex = findNearestSegmentIndex(pointer, () => true);
       const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
-      if (slabHitIndex >= 0) {
+      const rampHitIndex = findTopmostRampIndex(pointerWorld, () => true);
+      if (rampHitIndex >= 0) {
         selectedSegmentIndices.clear();
         selectedSlabBoxIndices.clear();
+        selectedRampIndices.clear();
+        selectedRampIndices.add(rampHitIndex);
+        status.textContent = "Tool changed to select. 1 ramp selected.";
+      } else if (slabHitIndex >= 0) {
+        selectedSegmentIndices.clear();
+        selectedSlabBoxIndices.clear();
+        selectedRampIndices.clear();
         selectedSlabBoxIndices.add(slabHitIndex);
         status.textContent = "Tool changed to select. 1 slab box selected.";
       } else if (hitIndex >= 0) {
         selectedSegmentIndices.clear();
         selectedSlabBoxIndices.clear();
+        selectedRampIndices.clear();
         selectedSegmentIndices.add(hitIndex);
         status.textContent = "Tool changed to select. 1 line selected.";
       } else {
         selectedSegmentIndices.clear();
         selectedSlabBoxIndices.clear();
+        selectedRampIndices.clear();
         status.textContent = "Tool changed to select.";
       }
       redraw();
@@ -4520,15 +5142,22 @@
             selectedSlabBoxIndices.add(i);
           }
         }
+        selectedRampIndices = new Set();
+        const ramps = getCurrentLevelRamps();
+        for (let i = 0; i < ramps.length; i += 1) {
+          if (ramps[i]) {
+            selectedRampIndices.add(i);
+          }
+        }
         isMarqueeSelecting = false;
         marqueeStartWorld = null;
         marqueeEndWorld = null;
         marqueeMode = "replace";
         dragState = null;
-        status.textContent = `Selected ${selectedSegmentIndices.size} line(s) and ${selectedSlabBoxIndices.size} slab box(es).`;
+        status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         redraw();
       } else if (key === "delete" || key === "backspace") {
-        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0) {
+        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
@@ -4536,7 +5165,7 @@
         }
       } else if (key === "x") {
         event.preventDefault();
-        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0) {
+        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
           redraw();
@@ -4549,21 +5178,54 @@
       } else if (key === "f") {
         event.preventDefault();
         cycleToolGroup(["floorbox", "ceilingbox", "halfwallbox"], "F group");
+      } else if (key === "r") {
+        event.preventDefault();
+        cycleToolGroup(["ramp", "halframp"], "R group");
       } else if (key === "s") {
         event.preventDefault();
         cycleToolGroup(["select"], "S group");
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") && key === "q") {
+      } else if ((key === "q" || key === "e") && activeTool === "select" && (selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0)) {
         event.preventDefault();
-        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - 15);
-        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        recordUndoSnapshot();
+
+        const slabRotationDelta = key === "q" ? -15 : 15;
+        const slabBoxes = getCurrentLevelSlabBoxes();
+        const slabIndices = Array.from(selectedSlabBoxIndices);
+        for (let i = 0; i < slabIndices.length; i += 1) {
+          const box = slabBoxes[slabIndices[i]];
+          if (!box) {
+            continue;
+          }
+          box.rotation = normalizeRotationDegrees((Number(box.rotation) || 0) + slabRotationDelta);
+        }
+
+        const rampDirectionDelta = key === "q" ? -90 : 90;
+        const ramps = getCurrentLevelRamps();
+        const rampIndices = Array.from(selectedRampIndices);
+        for (let i = 0; i < rampIndices.length; i += 1) {
+          const ramp = ramps[rampIndices[i]];
+          if (!ramp) {
+            continue;
+          }
+          ramp.rotation = normalizeRotationDegrees((Number(ramp.rotation) || 0) + rampDirectionDelta);
+          snapRampToGrid(ramp);
+        }
+
+        queueLocalAutosave();
+        status.textContent = `Updated selection: rotated ${slabIndices.length} slab box(es) and changed direction of ${rampIndices.length} ramp(s).`;
         redraw();
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") && key === "e") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp") && key === "q") {
         event.preventDefault();
-        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + 15);
-        status.textContent = `${activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} box rotation: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - ((activeTool === "ramp" || activeTool === "halframp") ? 90 : 15));
+        status.textContent = `${(activeTool === "ramp" || activeTool === "halframp") ? (activeTool === "halframp" ? "Half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        redraw();
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp") && key === "e") {
+        event.preventDefault();
+        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + ((activeTool === "ramp" || activeTool === "halframp") ? 90 : 15));
+        status.textContent = `${(activeTool === "ramp" || activeTool === "halframp") ? (activeTool === "halframp" ? "Half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
       }
     });
@@ -4588,6 +5250,7 @@
       const hasAnyGeometry = floors.some(level =>
         (Array.isArray(level.segments) && level.segments.length > 0)
         || (Array.isArray(level.slabBoxes) && level.slabBoxes.length > 0)
+        || (Array.isArray(level.ramps) && level.ramps.length > 0)
       );
       if (!hasAnyGeometry) {
         status.textContent = "All levels are already empty.";
@@ -4607,6 +5270,10 @@
           floors[i].slabBoxes = [];
         }
         floors[i].slabBoxes.length = 0;
+        if (!Array.isArray(floors[i].ramps)) {
+          floors[i].ramps = [];
+        }
+        floors[i].ramps.length = 0;
       }
       selectedSegmentIndices.clear();
       isMarqueeSelecting = false;
@@ -4647,6 +5314,8 @@
     toolFloorBoxButton.addEventListener("click", () => setTool("floorbox"));
     toolCeilingBoxButton.addEventListener("click", () => setTool("ceilingbox"));
     toolHalfWallBoxButton.addEventListener("click", () => setTool("halfwallbox"));
+    toolRampButton.addEventListener("click", () => setTool("ramp"));
+    toolHalfRampButton.addEventListener("click", () => setTool("halframp"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 

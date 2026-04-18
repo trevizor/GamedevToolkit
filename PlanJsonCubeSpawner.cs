@@ -18,6 +18,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private GameObject floorPrefab;
     [SerializeField] private GameObject ceilingPrefab;
     [SerializeField] private GameObject halfWallSlabPrefab;
+    [SerializeField] private GameObject rampPrefab;
 
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
@@ -59,6 +60,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         public string name;
         public SegmentData[] segments;
         public SlabBoxData[] slabBoxes;
+        public RampData[] ramps;
     }
 
     [Serializable]
@@ -70,6 +72,19 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         public float sx;
         public float sy;
         public float rotation;
+    }
+
+    [Serializable]
+    private class RampData
+    {
+        public string type;
+        public float cx;
+        public float cy;
+        public float sx;
+        public float sy;
+        public float rotation;
+        public int fromLevel;
+        public int toLevel;
     }
 
     [Serializable]
@@ -145,6 +160,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         int spawnedLineCount = 0;
         int spawnedSlabCount = 0;
+        int spawnedRampCount = 0;
 
         if (plan.floors != null && plan.floors.Length > 0)
         {
@@ -160,6 +176,9 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
                 SlabBoxData[] slabBoxes = plan.floors[i] != null ? plan.floors[i].slabBoxes : null;
                 spawnedSlabCount += SpawnSlabBoxes(slabBoxes, levelBaseY, grid, wallHeightFromPlan, slabThickness);
+
+                RampData[] ramps = plan.floors[i] != null ? plan.floors[i].ramps : null;
+                spawnedRampCount += SpawnRamps(ramps, i, grid, floorStride, wallHeightFromPlan, slabThickness);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
@@ -173,8 +192,71 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         if (logBuildSummary)
         {
-            Debug.Log($"PlanJsonCubeSpawner: Spawn complete. Line prefabs: {spawnedLineCount}, slab prefabs: {spawnedSlabCount}", this);
+            Debug.Log($"PlanJsonCubeSpawner: Spawn complete. Line prefabs: {spawnedLineCount}, slab prefabs: {spawnedSlabCount}, ramp prefabs: {spawnedRampCount}", this);
         }
+    }
+
+    private int SpawnRamps(
+        RampData[] ramps,
+        int currentFloorIndex,
+        float gridSize,
+        float floorStride,
+        float wallHeight,
+        float slabThickness)
+    {
+        if (ramps == null || ramps.Length == 0 || rampPrefab == null)
+        {
+            return 0;
+        }
+
+        int count = 0;
+
+        for (int i = 0; i < ramps.Length; i++)
+        {
+            RampData ramp = ramps[i];
+            if (ramp == null)
+            {
+                continue;
+            }
+
+            float sx = ramp.sx * gridSize;
+            float sz = ramp.sy * gridSize;
+            if (!float.IsFinite(sx) || !float.IsFinite(sz) || sx <= 0.0001f || sz <= 0.0001f)
+            {
+                continue;
+            }
+
+            float px = ramp.cx * gridSize;
+            float pz = ramp.cy * gridSize;
+            if (!float.IsFinite(px) || !float.IsFinite(pz))
+            {
+                continue;
+            }
+
+            int fromLevel = ramp.fromLevel >= 0 ? ramp.fromLevel : currentFloorIndex;
+            int toLevel = ramp.toLevel >= 0 ? ramp.toLevel : (currentFloorIndex + 1);
+            float startY = fromLevel * floorStride;
+            string rampType = string.IsNullOrWhiteSpace(ramp.type) ? "full" : ramp.type.Trim().ToLowerInvariant();
+            bool isHalfRamp = rampType == "half";
+            float endY = isHalfRamp
+                ? startY + wallHeight * HALF_WALL_HEIGHT_FACTOR + slabThickness * SLAB_Y_OFFSET_FACTOR
+                : toLevel * floorStride;
+            float rise = Mathf.Abs(endY - startY);
+            if (rise <= 0.0001f)
+            {
+                continue;
+            }
+
+            float centerY = Mathf.Min(startY, endY) + rise * 0.5f;
+            Vector3 localPos = new Vector3(px, centerY, pz);
+            Quaternion localRot = Quaternion.Euler(0f, ramp.rotation, 0f);
+            Vector3 localScale = new Vector3(sx, rise, sz);
+
+            SpawnPrefab(rampPrefab, localPos, localRot, localScale);
+            count += 1;
+        }
+
+        return count;
     }
 
     private int SpawnSegments(
