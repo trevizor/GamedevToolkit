@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class PlanJsonCubeSpawner : MonoBehaviour
@@ -183,6 +184,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         float wallThickness)
     {
         int count = 0;
+        Dictionary<string, int> wallEndpointUsage = BuildWallEndpointUsage(segments, gridSize);
 
         for (int i = 0; i < segments.Length; i++)
         {
@@ -208,7 +210,21 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            SpawnSegmentPrefab(prefab, start, end, levelBaseY, wallThickness);
+            float trimAtStart = 0f;
+            float extendAtEnd = 0f;
+            if (IsWallLikeType(type))
+            {
+                string startKey = BuildEndpointKey(start);
+                string endKey = BuildEndpointKey(end);
+                bool hasStartJoin = wallEndpointUsage.TryGetValue(startKey, out int startCount) && startCount > 1;
+                bool hasEndJoin = wallEndpointUsage.TryGetValue(endKey, out int endCount) && endCount > 1;
+
+                float joinCompensation = wallThickness * 0.5f;
+                trimAtStart = hasStartJoin ? joinCompensation : 0f;
+                extendAtEnd = hasEndJoin ? joinCompensation : 0f;
+            }
+
+            SpawnSegmentPrefab(prefab, start, end, levelBaseY, trimAtStart, extendAtEnd);
             count += 1;
         }
 
@@ -297,7 +313,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 y = levelBaseY - safeThickness * 0.5f;
             }
 
-            y += safeThickness * SLAB_Y_OFFSET_FACTOR;
+            if (!isCeiling)
+            {
+                y += safeThickness * SLAB_Y_OFFSET_FACTOR;
+            }
 
             Vector3 localPos = new Vector3(px, y, pz);
             Quaternion localRot = Quaternion.Euler(0f, box.rotation, 0f);
@@ -310,7 +329,13 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         return count;
     }
 
-    private void SpawnSegmentPrefab(GameObject prefab, Vector2 start, Vector2 end, float levelBaseY, float wallThickness)
+    private void SpawnSegmentPrefab(
+        GameObject prefab,
+        Vector2 start,
+        Vector2 end,
+        float levelBaseY,
+        float trimAtStart,
+        float extendAtEnd)
     {
         Vector2 delta = end - start;
         float len = delta.magnitude;
@@ -319,15 +344,84 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             return;
         }
 
-        // Start-pivoted prefabs get extended at the segment end by half wall thickness.
-        float adjustedLength = len + wallThickness * 0.5f;
+        Vector2 dir = delta / len;
+        float safeTrimAtStart = Mathf.Clamp(trimAtStart, 0f, len - 0.0001f);
+        float safeExtendAtEnd = Mathf.Max(0f, extendAtEnd);
 
-        Vector3 worldPos = new Vector3(start.x, levelBaseY, start.y);
-        Vector3 dir3 = new Vector3(delta.x / len, 0f, delta.y / len);
+        // For start-pivoted prefabs, trim joined starts and extend joined ends by matching amounts.
+        float adjustedLength = (len - safeTrimAtStart) + safeExtendAtEnd;
+        if (adjustedLength <= 0.0001f)
+        {
+            return;
+        }
+
+        Vector2 adjustedStart = start + dir * safeTrimAtStart;
+        Vector3 worldPos = new Vector3(adjustedStart.x, levelBaseY, adjustedStart.y);
+        Vector3 dir3 = new Vector3(dir.x, 0f, dir.y);
         Quaternion rot = BuildTopViewRotation(dir3);
         Vector3 scale = BuildScaledLength(prefab.transform.localScale, adjustedLength);
 
         SpawnPrefab(prefab, worldPos, rot, scale);
+    }
+
+    private Dictionary<string, int> BuildWallEndpointUsage(SegmentData[] segments, float gridSize)
+    {
+        Dictionary<string, int> usage = new Dictionary<string, int>();
+
+        if (segments == null)
+        {
+            return usage;
+        }
+
+        for (int i = 0; i < segments.Length; i++)
+        {
+            SegmentData seg = segments[i];
+            if (!IsValidSegment(seg))
+            {
+                continue;
+            }
+
+            string type = string.IsNullOrWhiteSpace(seg.type) ? "wall" : seg.type.Trim().ToLowerInvariant();
+            if (!IsWallLikeType(type))
+            {
+                continue;
+            }
+
+            Vector2 start = new Vector2(seg.a.x * gridSize, seg.a.y * gridSize);
+            Vector2 end = new Vector2(seg.b.x * gridSize, seg.b.y * gridSize);
+            if ((end - start).sqrMagnitude < 0.000001f)
+            {
+                continue;
+            }
+
+            IncrementEndpointUsage(usage, BuildEndpointKey(start));
+            IncrementEndpointUsage(usage, BuildEndpointKey(end));
+        }
+
+        return usage;
+    }
+
+    private bool IsWallLikeType(string type)
+    {
+        return type == "wall" || type == "halfwall";
+    }
+
+    private void IncrementEndpointUsage(Dictionary<string, int> usage, string key)
+    {
+        if (usage.TryGetValue(key, out int count))
+        {
+            usage[key] = count + 1;
+            return;
+        }
+
+        usage[key] = 1;
+    }
+
+    private string BuildEndpointKey(Vector2 point)
+    {
+        int qx = Mathf.RoundToInt(point.x * 1000f);
+        int qy = Mathf.RoundToInt(point.y * 1000f);
+        return qx.ToString() + ":" + qy.ToString();
     }
 
     private Quaternion BuildTopViewRotation(Vector3 direction)

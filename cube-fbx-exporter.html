@@ -507,6 +507,7 @@
     const DEFAULT_DOOR_HEAD_HEIGHT_UNITS = 2;
     const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
+    const SLAB_Y_OFFSET_FACTOR = 0.1;
 
     const exportButton = document.getElementById("exportBtn");
     const preview3dButton = document.getElementById("preview3dBtn");
@@ -3213,31 +3214,30 @@
       return resolved;
     }
 
-    function buildCornerMaskExtensions(sourceSegments, extensionAmount) {
-      const junctions = new Map();
-      const extensions = new Map();
-      const angleEps = 1e-4;
-      const amount = Number.isFinite(extensionAmount) ? Math.max(0, extensionAmount) : 0;
+    function buildWallEndpointKey2D(point) {
+      return `${point.x.toFixed(6)},${point.z.toFixed(6)}`;
+    }
 
-      if (amount <= 0) {
-        return extensions;
-      }
+    function isWallLikeMeshSegmentType(type) {
+      return type === "wall" || type === "halfwall";
+    }
 
-      function pointKey2D(p) {
-        return `${p.x.toFixed(6)},${p.z.toFixed(6)}`;
-      }
+    function buildWallEndpointUsageForMesh(sourceSegments) {
+      const usage = new Map();
 
-      function addAtJunction(point, entry) {
-        const key = pointKey2D(point);
-        if (!junctions.has(key)) {
-          junctions.set(key, []);
-        }
-        junctions.get(key).push(entry);
+      function incrementUsage(point) {
+        const key = buildWallEndpointKey2D(point);
+        usage.set(key, (usage.get(key) || 0) + 1);
       }
 
       for (let i = 0; i < sourceSegments.length; i += 1) {
         const seg = sourceSegments[i];
-        if (!seg || !seg.a || !seg.b || (seg.type || "wall") !== "wall") {
+        if (!seg || !seg.a || !seg.b) {
+          continue;
+        }
+
+        const segType = seg.type || "wall";
+        if (!isWallLikeMeshSegmentType(segType)) {
           continue;
         }
 
@@ -3253,39 +3253,11 @@
           continue;
         }
 
-        const dirAB = vec2Scale(ab, 1 / len);
-        const dirBA = vec2Scale(dirAB, -1);
-        addAtJunction(a, { segIndex: i, endpoint: "a", outward: dirBA });
-        addAtJunction(b, { segIndex: i, endpoint: "b", outward: dirAB });
+        incrementUsage(a);
+        incrementUsage(b);
       }
 
-      for (const entries of junctions.values()) {
-        if (!entries || entries.length !== 2) {
-          continue;
-        }
-
-        const e0 = entries[0];
-        const e1 = entries[1];
-        if (e0.segIndex === e1.segIndex) {
-          continue;
-        }
-
-        const dot = vec2Dot(e0.outward, e1.outward);
-        const cross = lineCross2(e0.outward, e1.outward);
-        if (Math.abs(cross) <= angleEps || Math.abs(Math.abs(dot) - 1) <= angleEps) {
-          continue;
-        }
-
-        // Deterministic pick: extend the lower-index wall segment at this corner.
-        const chosen = e0.segIndex <= e1.segIndex ? e0 : e1;
-        if (!extensions.has(chosen.segIndex)) {
-          extensions.set(chosen.segIndex, { a: 0, b: 0 });
-        }
-        const ex = extensions.get(chosen.segIndex);
-        ex[chosen.endpoint] = Math.max(ex[chosen.endpoint], amount);
-      }
-
-      return extensions;
+      return usage;
     }
 
     function buildWallMeshData(sourceSegments, levelBaseY, meshName) {
@@ -3305,7 +3277,7 @@
       const doorHeadHeight = getDoorHeadHeight();
       const windowOpeningGap = getWindowOpeningGap();
       const half = thickness / 2;
-      const cornerMaskExtensions = buildCornerMaskExtensions(resolvedSegments, half);
+      const wallEndpointUsage = buildWallEndpointUsageForMesh(resolvedSegments);
 
       const vertexMap = new Map();
 
@@ -3402,28 +3374,33 @@
           continue;
         }
 
-        if ((raw.type || "wall") === "wall") {
-          const ext = cornerMaskExtensions.get(i);
-          if (ext) {
-            const ab = vec2Sub(b, a);
-            const len = vec2Length(ab);
-            if (len > 1e-8) {
-              const dir = vec2Scale(ab, 1 / len);
-              if (ext.a > 0) {
-                const back = vec2Scale(dir, -ext.a);
-                a.x += back.x;
-                a.z += back.z;
-              }
-              if (ext.b > 0) {
-                const forward = vec2Scale(dir, ext.b);
-                b.x += forward.x;
-                b.z += forward.z;
-              }
+        const segType = raw.type || "wall";
+        if (isWallLikeMeshSegmentType(segType)) {
+          const ab = vec2Sub(b, a);
+          const len = vec2Length(ab);
+          if (len > 1e-8) {
+            const dir = vec2Scale(ab, 1 / len);
+            const startKey = buildWallEndpointKey2D(a);
+            const endKey = buildWallEndpointKey2D(b);
+            const hasStartJoin = (wallEndpointUsage.get(startKey) || 0) > 1;
+            const hasEndJoin = (wallEndpointUsage.get(endKey) || 0) > 1;
+
+            const trimAtStart = hasStartJoin ? Math.min(half, Math.max(0, len - 1e-6)) : 0;
+            const extendAtEnd = hasEndJoin ? half : 0;
+
+            if (trimAtStart > 0) {
+              const trimVec = vec2Scale(dir, trimAtStart);
+              a.x += trimVec.x;
+              a.z += trimVec.z;
+            }
+
+            if (extendAtEnd > 0) {
+              const extendVec = vec2Scale(dir, extendAtEnd);
+              b.x += extendVec.x;
+              b.z += extendVec.z;
             }
           }
         }
-
-        const segType = raw.type || "wall";
 
         if (segType === "door") {
           const baseY = Math.min(doorHeadHeight, height);
@@ -3614,6 +3591,7 @@
       const floorStride = getWallHeight() + getWallThickness() * 0.5;
       const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
       const slabThickness = Math.max(0.05, getWallThickness());
+      const slabYOffset = slabThickness * SLAB_Y_OFFSET_FACTOR;
 
       function appendSlabBox(cx, cz, sx, sz, baseY, topY, rotationDeg, group) {
         if (!Number.isFinite(cx) || !Number.isFinite(cz) || !Number.isFinite(sx) || !Number.isFinite(sz)) {
@@ -3727,10 +3705,10 @@
               const baseY = levelBaseY + getWallHeight();
               appendSlabBox(cx, cz, sx, sz, baseY, baseY + slabThickness, rotation, "ceiling");
             } else if (type === "halfwall") {
-              const halfTop = levelBaseY + getWallHeight() * HALF_WALL_HEIGHT_FACTOR;
+              const halfTop = levelBaseY + getWallHeight() * HALF_WALL_HEIGHT_FACTOR + slabYOffset;
               appendSlabBox(cx, cz, sx, sz, halfTop - slabThickness, halfTop, rotation, "walls");
             } else {
-              appendSlabBox(cx, cz, sx, sz, levelBaseY - slabThickness, levelBaseY, rotation, "floor");
+              appendSlabBox(cx, cz, sx, sz, levelBaseY - slabThickness + slabYOffset, levelBaseY + slabYOffset, rotation, "floor");
             }
           }
         }
