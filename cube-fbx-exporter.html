@@ -2677,6 +2677,81 @@
       return tris;
     }
 
+    function buildCornerMaskExtensions(sourceSegments, extensionAmount) {
+      const junctions = new Map();
+      const extensions = new Map();
+      const angleEps = 1e-4;
+      const amount = Number.isFinite(extensionAmount) ? Math.max(0, extensionAmount) : 0;
+
+      if (amount <= 0) {
+        return extensions;
+      }
+
+      function pointKey2D(p) {
+        return `${p.x.toFixed(6)},${p.z.toFixed(6)}`;
+      }
+
+      function addAtJunction(point, entry) {
+        const key = pointKey2D(point);
+        if (!junctions.has(key)) {
+          junctions.set(key, []);
+        }
+        junctions.get(key).push(entry);
+      }
+
+      for (let i = 0; i < sourceSegments.length; i += 1) {
+        const seg = sourceSegments[i];
+        if (!seg || !seg.a || !seg.b || (seg.type || "wall") !== "wall") {
+          continue;
+        }
+
+        const a = { x: Number(seg.a.x) * GRID_SIZE_UNITS, z: Number(seg.a.y) * GRID_SIZE_UNITS };
+        const b = { x: Number(seg.b.x) * GRID_SIZE_UNITS, z: Number(seg.b.y) * GRID_SIZE_UNITS };
+        if (![a.x, a.z, b.x, b.z].every(Number.isFinite)) {
+          continue;
+        }
+
+        const ab = vec2Sub(b, a);
+        const len = vec2Length(ab);
+        if (len <= 1e-8) {
+          continue;
+        }
+
+        const dirAB = vec2Scale(ab, 1 / len);
+        const dirBA = vec2Scale(dirAB, -1);
+        addAtJunction(a, { segIndex: i, endpoint: "a", outward: dirBA });
+        addAtJunction(b, { segIndex: i, endpoint: "b", outward: dirAB });
+      }
+
+      for (const entries of junctions.values()) {
+        if (!entries || entries.length !== 2) {
+          continue;
+        }
+
+        const e0 = entries[0];
+        const e1 = entries[1];
+        if (e0.segIndex === e1.segIndex) {
+          continue;
+        }
+
+        const dot = vec2Dot(e0.outward, e1.outward);
+        const cross = lineCross2(e0.outward, e1.outward);
+        if (Math.abs(cross) <= angleEps || Math.abs(Math.abs(dot) - 1) <= angleEps) {
+          continue;
+        }
+
+        // Deterministic pick: extend the lower-index wall segment at this corner.
+        const chosen = e0.segIndex <= e1.segIndex ? e0 : e1;
+        if (!extensions.has(chosen.segIndex)) {
+          extensions.set(chosen.segIndex, { a: 0, b: 0 });
+        }
+        const ex = extensions.get(chosen.segIndex);
+        ex[chosen.endpoint] = Math.max(ex[chosen.endpoint], amount);
+      }
+
+      return extensions;
+    }
+
     function buildWallMeshData(sourceSegments, levelBaseY, meshName) {
       const mesh = { name: meshName || "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
       if (!Array.isArray(sourceSegments) || sourceSegments.length === 0) {
@@ -2689,6 +2764,7 @@
       const doorHeadHeight = getDoorHeadHeight();
       const windowOpeningGap = getWindowOpeningGap();
       const half = thickness / 2;
+      const cornerMaskExtensions = buildCornerMaskExtensions(sourceSegments, half);
 
       const vertexMap = new Map();
 
@@ -2783,6 +2859,27 @@
         const b = vec2(Number(raw.b.x) * GRID_SIZE_UNITS, Number(raw.b.y) * GRID_SIZE_UNITS);
         if (![a.x, a.z, b.x, b.z].every(Number.isFinite)) {
           continue;
+        }
+
+        if ((raw.type || "wall") === "wall") {
+          const ext = cornerMaskExtensions.get(i);
+          if (ext) {
+            const ab = vec2Sub(b, a);
+            const len = vec2Length(ab);
+            if (len > 1e-8) {
+              const dir = vec2Scale(ab, 1 / len);
+              if (ext.a > 0) {
+                const back = vec2Scale(dir, -ext.a);
+                a.x += back.x;
+                a.z += back.z;
+              }
+              if (ext.b > 0) {
+                const forward = vec2Scale(dir, ext.b);
+                b.x += forward.x;
+                b.z += forward.z;
+              }
+            }
+          }
         }
 
         const segType = raw.type || "wall";
@@ -3036,8 +3133,11 @@
         }
         const glbBuffer = buildGlbFromMesh(meshData);
         const blob = new Blob([glbBuffer], { type: "model/gltf-binary" });
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        downloadBlob(blob, `floor-plan-walls-${timestamp}.glb`);
+        const now = new Date();
+        const { datePart, timePart } = formatDateParts(now);
+        const safeTitle = sanitizeFilenamePart(planTitle);
+        const filename = `${safeTitle}-${datePart}-${timePart}.glb`;
+        downloadBlob(blob, filename);
         status.textContent = `Walls GLB exported. Vertices: ${meshData.vertices.length}, Triangles: ${meshData.faces.length}`;
       } catch (error) {
         console.error(error);
