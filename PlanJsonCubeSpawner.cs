@@ -257,8 +257,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     private void SpawnPrefab(GameObject prefab, Vector3 position, Quaternion rotation, Vector3 scale)
     {
         Transform parent = spawnRoot != null ? spawnRoot : transform;
-        GameObject instance = Instantiate(prefab, position, rotation, parent);
-        instance.transform.localScale = scale;
+        GameObject instance = Instantiate(prefab, parent);
+        Transform instanceTransform = instance.transform;
+        instanceTransform.localPosition = position;
+        instanceTransform.localRotation = rotation;
+        instanceTransform.localScale = scale;
     }
 
     private float EstimatePrefabHeight(GameObject prefab)
