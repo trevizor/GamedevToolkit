@@ -429,13 +429,15 @@
         <button id="toolWindowBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Window Tool</button>
         <button id="toolCutBtn" type="button" class="secondary tool" title="Shortcut: D (cycles D group)">Cut Tool</button>
       </div>
-      <div class="tool-group" aria-label="B group tools">
-        <button id="toolFloorBoxBtn" type="button" class="secondary tool" title="Shortcut: B (cycles B group)">Floor Box</button>
-        <button id="toolCeilingBoxBtn" type="button" class="secondary tool" title="Shortcut: B (cycles B group)">Ceiling Box</button>
+      <div class="tool-group" aria-label="F group tools">
+        <button id="toolFloorBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Floor Box</button>
+        <button id="toolCeilingBoxBtn" type="button" class="secondary tool" title="Shortcut: F (cycles F group)">Ceiling Box</button>
       </div>
       <div class="tool-group" aria-label="S group tools">
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
-        <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Remove Wall</button>
+      </div>
+      <div class="tool-group" aria-label="X group tools">
+        <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: X (cycles X group)">Remove Wall</button>
       </div>
       <div class="tool-group" aria-label="View tools">
         <button id="floorVisibilityToggleBtn" type="button" class="secondary">Show Floor Boxes</button>
@@ -1379,10 +1381,23 @@
 
       if (pointerGrid) {
         const p = gridToCanvas(pointerGrid);
-        ctx.fillStyle = "#1479ff";
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fill();
+        if (activeTool === "erase") {
+          ctx.save();
+          ctx.strokeStyle = "#dc2626";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(p.x - 6, p.y - 6);
+          ctx.lineTo(p.x + 6, p.y + 6);
+          ctx.moveTo(p.x + 6, p.y - 6);
+          ctx.lineTo(p.x - 6, p.y + 6);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = "#1479ff";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       if (activeTool === "select" && isMarqueeSelecting && marqueeStartWorld && marqueeEndWorld) {
@@ -1698,6 +1713,17 @@
       Object.keys(toolButtons).forEach(key => {
         toolButtons[key].classList.toggle("active", key === activeTool);
       });
+
+      if (activeTool === "floorbox") {
+        isFloorBoxesVisible = true;
+      }
+      if (activeTool === "ceilingbox") {
+        isCeilingBoxesVisible = true;
+      }
+      if (activeTool === "floorbox" || activeTool === "ceilingbox") {
+        updateSlabVisibilityButtons();
+        saveUiState();
+      }
 
       if (activeTool === "floorbox" || activeTool === "ceilingbox") {
         status.textContent = `Tool changed to ${activeTool}. Drag to place box. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
@@ -4231,13 +4257,17 @@
           let maxY = dragState.startBox.sy * 0.5;
 
           if (dragState.side === "left") {
-            minX = Math.min(Math.round(pointerLocal.x), maxX - 1);
+            const width = Math.max(1, Math.round(maxX - pointerLocal.x));
+            minX = maxX - width;
           } else if (dragState.side === "right") {
-            maxX = Math.max(Math.round(pointerLocal.x), minX + 1);
+            const width = Math.max(1, Math.round(pointerLocal.x - minX));
+            maxX = minX + width;
           } else if (dragState.side === "bottom") {
-            minY = Math.min(Math.round(pointerLocal.y), maxY - 1);
+            const height = Math.max(1, Math.round(maxY - pointerLocal.y));
+            minY = maxY - height;
           } else if (dragState.side === "top") {
-            maxY = Math.max(Math.round(pointerLocal.y), minY + 1);
+            const height = Math.max(1, Math.round(pointerLocal.y - minY));
+            maxY = minY + height;
           }
 
           const localCenter = {
@@ -4499,22 +4529,31 @@
         dragState = null;
         status.textContent = `Selected ${selectedSegmentIndices.size} line(s) and ${selectedSlabBoxIndices.size} slab box(es).`;
         redraw();
-      } else if (key === "delete" || key === "backspace" || key === "x") {
+      } else if (key === "delete" || key === "backspace") {
         if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
           redraw();
         }
+      } else if (key === "x") {
+        event.preventDefault();
+        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0) {
+          const removedCount = deleteSelectedSegments();
+          status.textContent = `Removed ${removedCount} selected item(s).`;
+          redraw();
+        } else {
+          cycleToolGroup(["erase"], "X group");
+        }
       } else if (key === "w") {
         event.preventDefault();
         cycleToolGroup(["wall", "halfwall", "box"], "W group");
-      } else if (key === "b") {
+      } else if (key === "f") {
         event.preventDefault();
-        cycleToolGroup(["floorbox", "ceilingbox"], "B group");
+        cycleToolGroup(["floorbox", "ceilingbox"], "F group");
       } else if (key === "s") {
         event.preventDefault();
-        cycleToolGroup(["select", "erase"], "S group");
+        cycleToolGroup(["select"], "S group");
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
