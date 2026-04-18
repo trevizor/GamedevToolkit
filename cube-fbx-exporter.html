@@ -4049,15 +4049,17 @@
         meshData.vertices.push(v0, v1, v2, v3, v4, v5, v6, v7);
 
         const pushFace = (a, b, c) => {
-          // Ramp faces were wound opposite to the rest of the mesh; flip winding for correct outward normals.
-          meshData.faces.push([offset + a, offset + c, offset + b]);
+          meshData.faces.push([offset + a, offset + b, offset + c]);
           meshData.faceGroups.push(group);
         };
 
+        // Top (+Y)
         pushFace(4, 6, 5);
         pushFace(4, 7, 6);
+        // Bottom (-Y)
         pushFace(0, 1, 2);
         pushFace(0, 2, 3);
+        // Sides
         pushFace(0, 4, 5);
         pushFace(0, 5, 1);
         pushFace(1, 5, 6);
@@ -4093,38 +4095,34 @@
           cz + p[0] * sin + p[1] * cos
         ]);
 
-        const v0 = [corners[0][0], startY, corners[0][1]];
-        const v1 = [corners[1][0], startY, corners[1][1]];
-        const v2 = [corners[2][0], endY, corners[2][1]];
-        const v3 = [corners[3][0], endY, corners[3][1]];
-        const v4 = [corners[0][0], startY, corners[0][1]];
-        const v5 = [corners[1][0], startY, corners[1][1]];
-        const v6 = [corners[2][0], startY, corners[2][1]];
-        const v7 = [corners[3][0], startY, corners[3][1]];
+        const v0 = [corners[0][0], startY, corners[0][1]]; // front-left low
+        const v1 = [corners[1][0], startY, corners[1][1]]; // front-right low
+        const v2 = [corners[2][0], endY, corners[2][1]];   // back-right high
+        const v3 = [corners[3][0], endY, corners[3][1]];   // back-left high
+        const v4 = [corners[2][0], startY, corners[2][1]]; // back-right low
+        const v5 = [corners[3][0], startY, corners[3][1]]; // back-left low
 
         const offset = meshData.vertices.length;
-        meshData.vertices.push(v0, v1, v2, v3, v4, v5, v6, v7);
+        meshData.vertices.push(v0, v1, v2, v3, v4, v5);
 
         const pushFace = (a, b, c) => {
           meshData.faces.push([offset + a, offset + b, offset + c]);
           meshData.faceGroups.push(group);
         };
 
-        // Top slope
-        pushFace(0, 1, 2);
-        pushFace(0, 2, 3);
-        // Bottom
-        pushFace(4, 6, 5);
-        pushFace(4, 7, 6);
-        // Sides
+        // Top slope (outward +Y component)
+        pushFace(0, 2, 1);
+        pushFace(0, 3, 2);
+        // Bottom (-Y)
+        pushFace(0, 1, 4);
         pushFace(0, 4, 5);
-        pushFace(0, 5, 1);
-        pushFace(1, 5, 6);
-        pushFace(1, 6, 2);
-        pushFace(2, 6, 7);
-        pushFace(2, 7, 3);
-        pushFace(3, 7, 4);
-        pushFace(3, 4, 0);
+        // Right side (+X)
+        pushFace(1, 2, 4);
+        // Left side (-X)
+        pushFace(0, 5, 3);
+        // Back side (+Z)
+        pushFace(3, 4, 2);
+        pushFace(3, 5, 4);
       }
 
       for (let i = 0; i < floors.length; i += 1) {
