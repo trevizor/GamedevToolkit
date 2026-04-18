@@ -421,7 +421,6 @@
       <div class="tool-group" aria-label="W group tools">
         <button id="toolWallBtn" type="button" class="secondary tool active" title="Shortcut: W (cycles W group)">Wall Tool</button>
         <button id="toolHalfWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Half Wall Tool</button>
-        <button id="toolFakeWallBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Fake Wall Tool</button>
         <button id="toolBoxBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)">Box Tool</button>
         <button id="toolEllipseBtn" type="button" class="secondary tool" title="Shortcut: W (cycles W group)" hidden>Ellipse Tool</button>
       </div>
@@ -518,7 +517,6 @@
     const toolBoxButton = document.getElementById("toolBoxBtn");
     const toolEllipseButton = document.getElementById("toolEllipseBtn");
     const toolHalfWallButton = document.getElementById("toolHalfWallBtn");
-    const toolFakeWallButton = document.getElementById("toolFakeWallBtn");
     const toolDoorButton = document.getElementById("toolDoorBtn");
     const toolWindowButton = document.getElementById("toolWindowBtn");
     const toolCutButton = document.getElementById("toolCutBtn");
@@ -692,7 +690,6 @@
       box: toolBoxButton,
       ellipse: toolEllipseButton,
       halfwall: toolHalfWallButton,
-      fakewall: toolFakeWallButton,
       door: toolDoorButton,
       window: toolWindowButton,
       cut: toolCutButton,
@@ -922,9 +919,6 @@
       if (seg.type === "halfwall") {
         return "#0e7490";
       }
-      if (seg.type === "fakewall") {
-        return "#cbd5e1";
-      }
       return "#0f1722";
     }
 
@@ -1013,6 +1007,16 @@
       };
     }
 
+    function slabLocalToWorldOffset(localPoint, box) {
+      const angleRad = normalizeRotationDegrees(box.rotation) * Math.PI / 180;
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+      return {
+        x: localPoint.x * cos - localPoint.y * sin,
+        y: localPoint.x * sin + localPoint.y * cos
+      };
+    }
+
     function pointInSlabBox(point, box) {
       if (!box) {
         return false;
@@ -1054,15 +1058,32 @@
         return null;
       }
 
-      const corners = getSlabBoxCorners(box);
+      const hx = Math.max(0.0005, Number(box.sx) * 0.5);
+      const hy = Math.max(0.0005, Number(box.sy) * 0.5);
+      const localNodes = [
+        { side: "left", x: -hx, y: 0 },
+        { side: "right", x: hx, y: 0 },
+        { side: "bottom", x: 0, y: -hy },
+        { side: "top", x: 0, y: hy }
+      ];
+
+      const worldNodes = localNodes.map(node => {
+        const offset = slabLocalToWorldOffset({ x: node.x, y: node.y }, box);
+        return {
+          side: node.side,
+          x: box.cx + offset.x,
+          y: box.cy + offset.y
+        };
+      });
+
       const toleranceWorld = Math.max(0.2, 10 / Math.max(gridPx, 1));
-      let bestCorner = -1;
+      let bestSide = null;
       let bestDist = Infinity;
-      for (let i = 0; i < corners.length; i += 1) {
-        const d = Math.hypot(pointerWorld.x - corners[i].x, pointerWorld.y - corners[i].y);
+      for (let i = 0; i < worldNodes.length; i += 1) {
+        const d = Math.hypot(pointerWorld.x - worldNodes[i].x, pointerWorld.y - worldNodes[i].y);
         if (d < bestDist) {
           bestDist = d;
-          bestCorner = i;
+          bestSide = worldNodes[i].side;
         }
       }
 
@@ -1072,7 +1093,7 @@
 
       return {
         index,
-        corner: bestCorner,
+        side: bestSide,
         startBox: {
           cx: box.cx,
           cy: box.cy,
@@ -1279,7 +1300,7 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "fakewall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
           if (points.length >= 3) {
@@ -1346,8 +1367,6 @@
             ctx.strokeStyle = "#0891b2";
           } else if (activeTool === "halfwall") {
             ctx.strokeStyle = "#0e7490";
-          } else if (activeTool === "fakewall") {
-            ctx.strokeStyle = "#cbd5e1";
           } else {
             ctx.strokeStyle = "#1479ff";
           }
@@ -1440,15 +1459,23 @@
           const index = indices[0];
           const box = slabBoxes[index];
           if (box && isSlabTypeVisible(box.type || "floor")) {
-            const corners = getSlabBoxCorners(box);
+            const hx = Math.max(0.0005, Number(box.sx) * 0.5);
+            const hy = Math.max(0.0005, Number(box.sy) * 0.5);
+            const sideNodesLocal = [
+              { x: -hx, y: 0 },
+              { x: hx, y: 0 },
+              { x: 0, y: -hy },
+              { x: 0, y: hy }
+            ];
             ctx.save();
             ctx.fillStyle = "#ffffff";
             ctx.strokeStyle = box.type === "ceiling" ? "#1d4ed8" : "#047857";
             ctx.lineWidth = 2;
-            for (let c = 0; c < corners.length; c += 1) {
-              const p = gridToCanvas(corners[c]);
+            for (let c = 0; c < sideNodesLocal.length; c += 1) {
+              const worldOffset = slabLocalToWorldOffset(sideNodesLocal[c], box);
+              const p = gridToCanvas({ x: box.cx + worldOffset.x, y: box.cy + worldOffset.y });
               ctx.beginPath();
-              ctx.rect(p.x - 4, p.y - 4, 8, 8);
+              ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
               ctx.fill();
               ctx.stroke();
             }
@@ -1473,14 +1500,13 @@
       const doorWidth = getDoorWidthUnits().toFixed(2);
       const windowGap = getWindowOpeningGap().toFixed(2);
       const wallCount = segments.filter(seg => seg.type === "wall").length;
-      const fakeWallCount = segments.filter(seg => seg.type === "fakewall").length;
       const halfWallCount = segments.filter(seg => seg.type === "halfwall").length;
       const doorCount = segments.filter(seg => seg.type === "door").length;
       const windowCount = segments.filter(seg => seg.type === "window").length;
       const slabBoxes = getCurrentLevel().slabBoxes || [];
       const floorSlabCount = slabBoxes.filter(box => box && box.type === "floor").length;
       const ceilingSlabCount = slabBoxes.filter(box => box && box.type === "ceiling").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Fake Walls: ${fakeWallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount}`;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -1638,13 +1664,16 @@
         }
       }
 
-      if (drag.mode === "scale-slab-box" && drag.startBox) {
+      if (drag.mode === "resize-slab-side" && drag.startBox) {
         const slabBoxes = getCurrentLevelSlabBoxes();
         const box = slabBoxes[drag.index];
         if (!box) {
           return false;
         }
         if (Math.abs(box.sx - drag.startBox.sx) > 1e-9 || Math.abs(box.sy - drag.startBox.sy) > 1e-9) {
+          return true;
+        }
+        if (Math.abs(box.cx - drag.startBox.cx) > 1e-9 || Math.abs(box.cy - drag.startBox.cy) > 1e-9) {
           return true;
         }
       }
@@ -2070,7 +2099,7 @@
 
     function splitExistingSegmentsAtIntersections(newA, newB) {
       const eps = 1e-6;
-      const cuttable = new Set(["wall", "halfwall", "fakewall", "door", "window"]);
+      const cuttable = new Set(["wall", "halfwall", "door", "window"]);
 
       for (let i = segments.length - 1; i >= 0; i -= 1) {
         const seg = segments[i];
@@ -2320,7 +2349,7 @@
         throw new Error("Invalid plan file.");
       }
 
-      const allowedTypes = new Set(["wall", "halfwall", "fakewall", "door", "window"]);
+      const allowedTypes = new Set(["wall", "halfwall", "door", "window"]);
       const sanitizeSegments = rawSegments => {
         const out = [];
         if (!Array.isArray(rawSegments)) {
@@ -2989,9 +3018,6 @@
       if (type === "halfwall") {
         return 30;
       }
-      if (type === "fakewall") {
-        return 5;
-      }
       return 10; // default wall (least important among visible geometry lines)
     }
 
@@ -3356,10 +3382,6 @@
         }
 
         const segType = raw.type || "wall";
-
-        if (segType === "fakewall") {
-          continue;
-        }
 
         if (segType === "door") {
           const baseY = Math.min(doorHeadHeight, height);
@@ -3968,14 +3990,14 @@
 
         if (slabHandleHit) {
           dragState = {
-            mode: "scale-slab-box",
+            mode: "resize-slab-side",
             index: slabHandleHit.index,
-            corner: slabHandleHit.corner,
+            side: slabHandleHit.side,
             startPointer: clonePoint(pointerGrid),
             startBox: slabHandleHit.startBox,
             undoSnapshot: captureCurrentProjectSnapshot()
           };
-          status.textContent = "Drag slab handle to scale box.";
+          status.textContent = "Drag slab side node to move that edge.";
           redraw();
           return;
         }
@@ -4089,7 +4111,7 @@
       }
 
       if (activeTool === "cut") {
-        const index = findNearestSegmentIndex(pointerWorld, seg => seg.type === "wall" || seg.type === "halfwall" || seg.type === "fakewall" || seg.type === "window");
+        const index = findNearestSegmentIndex(pointerWorld, seg => seg.type === "wall" || seg.type === "halfwall" || seg.type === "window");
         if (index >= 0) {
           if (splitSegmentAtPoint(index, pointerWorld)) {
             status.textContent = "Segment cut into two parts.";
@@ -4195,16 +4217,39 @@
             box.cx = original.cx + dx;
             box.cy = original.cy + dy;
           }
-        } else if (dragState.mode === "scale-slab-box") {
+        } else if (dragState.mode === "resize-slab-side") {
           const slabBoxes = getCurrentLevelSlabBoxes();
           const box = slabBoxes[dragState.index];
           if (!box) {
             redraw();
             return;
           }
-          const local = worldToSlabLocal(pointerWorld, dragState.startBox);
-          box.sx = Math.max(1, Math.abs(local.x) * 2);
-          box.sy = Math.max(1, Math.abs(local.y) * 2);
+          const pointerLocal = worldToSlabLocal(pointerGrid, dragState.startBox);
+          let minX = -dragState.startBox.sx * 0.5;
+          let maxX = dragState.startBox.sx * 0.5;
+          let minY = -dragState.startBox.sy * 0.5;
+          let maxY = dragState.startBox.sy * 0.5;
+
+          if (dragState.side === "left") {
+            minX = Math.min(Math.round(pointerLocal.x), maxX - 1);
+          } else if (dragState.side === "right") {
+            maxX = Math.max(Math.round(pointerLocal.x), minX + 1);
+          } else if (dragState.side === "bottom") {
+            minY = Math.min(Math.round(pointerLocal.y), maxY - 1);
+          } else if (dragState.side === "top") {
+            maxY = Math.max(Math.round(pointerLocal.y), minY + 1);
+          }
+
+          const localCenter = {
+            x: (minX + maxX) * 0.5,
+            y: (minY + maxY) * 0.5
+          };
+          const worldCenterOffset = slabLocalToWorldOffset(localCenter, dragState.startBox);
+
+          box.cx = dragState.startBox.cx + worldCenterOffset.x;
+          box.cy = dragState.startBox.cy + worldCenterOffset.y;
+          box.sx = Math.max(1, maxX - minX);
+          box.sy = Math.max(1, maxY - minY);
         }
 
         queueLocalAutosave();
@@ -4261,11 +4306,11 @@
               recordUndoSnapshot(dragState.undoSnapshot);
             }
             status.textContent = `Moved ${selectedSlabBoxIndices.size} slab box(es).`;
-          } else if (dragState.mode === "scale-slab-box") {
+          } else if (dragState.mode === "resize-slab-side") {
             if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
               recordUndoSnapshot(dragState.undoSnapshot);
             }
-            status.textContent = "Slab box scaled.";
+            status.textContent = "Slab side moved.";
           } else {
             if (didDragChangeGeometry(dragState) && dragState.undoSnapshot) {
               recordUndoSnapshot(dragState.undoSnapshot);
@@ -4343,9 +4388,6 @@
       } else if (activeTool === "halfwall" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
         addSegmentWithCuts("halfwall", startGrid, endGrid);
         status.textContent = `Half wall added. Total segments: ${segments.length}`;
-      } else if (activeTool === "fakewall" && (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y)) {
-        addSegmentWithCuts("fakewall", startGrid, endGrid);
-        status.textContent = `Fake wall added. Total segments: ${segments.length}`;
       } else if (startGrid.x !== endGrid.x || startGrid.y !== endGrid.y) {
         addWallSegmentWithCut(startGrid, endGrid);
         status.textContent = `Wall added. Total segments: ${segments.length}`;
@@ -4466,7 +4508,7 @@
         }
       } else if (key === "w") {
         event.preventDefault();
-        cycleToolGroup(["wall", "halfwall", "fakewall", "box"], "W group");
+        cycleToolGroup(["wall", "halfwall", "box"], "W group");
       } else if (key === "b") {
         event.preventDefault();
         cycleToolGroup(["floorbox", "ceilingbox"], "B group");
@@ -4562,7 +4604,6 @@
     toolBoxButton.addEventListener("click", () => setTool("box"));
     toolEllipseButton.addEventListener("click", () => setTool("ellipse"));
     toolHalfWallButton.addEventListener("click", () => setTool("halfwall"));
-    toolFakeWallButton.addEventListener("click", () => setTool("fakewall"));
     toolDoorButton.addEventListener("click", () => setTool("door"));
     toolWindowButton.addEventListener("click", () => setTool("window"));
     toolCutButton.addEventListener("click", () => setTool("cut"));

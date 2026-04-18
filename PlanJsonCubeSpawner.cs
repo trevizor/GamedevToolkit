@@ -11,7 +11,6 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private GameObject halfWallPrefab;
     [SerializeField] private GameObject doorPrefab;
     [SerializeField] private GameObject windowPrefab;
-    [SerializeField] private GameObject fakeWallPrefab;
     [SerializeField] private GameObject floorPrefab;
     [SerializeField] private GameObject ceilingPrefab;
 
@@ -187,10 +186,6 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             }
 
             string type = string.IsNullOrWhiteSpace(seg.type) ? "wall" : seg.type.Trim().ToLowerInvariant();
-            if (type == "fakewall")
-            {
-                continue;
-            }
 
             Vector2 start = new Vector2(seg.a.x * gridSize, seg.a.y * gridSize);
             Vector2 end = new Vector2(seg.b.x * gridSize, seg.b.y * gridSize);
@@ -225,8 +220,6 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 return doorPrefab != null ? doorPrefab : wallPrefab;
             case "window":
                 return windowPrefab != null ? windowPrefab : wallPrefab;
-            case "fakewall":
-                return fakeWallPrefab != null ? fakeWallPrefab : wallPrefab;
             default:
                 return wallPrefab;
         }
