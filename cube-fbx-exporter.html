@@ -3713,6 +3713,14 @@
       }
     });
 
+    canvas.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      if (activeTool !== "select") {
+        setTool("select");
+        status.textContent = "Tool changed to select.";
+      }
+    });
+
     canvas.addEventListener("wheel", event => {
       event.preventDefault();
       const p = getPointerPosition(event);
