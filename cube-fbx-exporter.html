@@ -2677,6 +2677,172 @@
       return tris;
     }
 
+    function getSegmentTypePriority(type) {
+      if (type === "door") {
+        return 50;
+      }
+      if (type === "window") {
+        return 40;
+      }
+      if (type === "halfwall") {
+        return 30;
+      }
+      if (type === "fakewall") {
+        return 5;
+      }
+      return 10; // default wall (least important among visible geometry lines)
+    }
+
+    function resolveOverlappingSegmentsForMesh(sourceSegments) {
+      const eps = 1e-6;
+      const candidates = [];
+
+      function addUniqueT(list, t) {
+        const clamped = Math.max(0, Math.min(1, t));
+        for (let i = 0; i < list.length; i += 1) {
+          if (Math.abs(list[i] - clamped) <= eps) {
+            return;
+          }
+        }
+        list.push(clamped);
+      }
+
+      function lerp2(a, b, t) {
+        return {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t
+        };
+      }
+
+      for (let i = 0; i < sourceSegments.length; i += 1) {
+        const raw = sourceSegments[i];
+        if (!raw || !raw.a || !raw.b) {
+          continue;
+        }
+
+        const a = { x: Number(raw.a.x), y: Number(raw.a.y) };
+        const b = { x: Number(raw.b.x), y: Number(raw.b.y) };
+        if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) {
+          continue;
+        }
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len <= eps) {
+          continue;
+        }
+
+        const type = raw.type || "wall";
+        candidates.push({
+          a,
+          b,
+          type,
+          priority: getSegmentTypePriority(type),
+          len,
+          dir: { x: dx / len, y: dy / len },
+          splitT: [0, 1]
+        });
+      }
+
+      for (let i = 0; i < candidates.length; i += 1) {
+        for (let j = i + 1; j < candidates.length; j += 1) {
+          const s0 = candidates[i];
+          const s1 = candidates[j];
+
+          // Matching direction only.
+          const dot = s0.dir.x * s1.dir.x + s0.dir.y * s1.dir.y;
+          if (dot < 0.999) {
+            continue;
+          }
+
+          // Must be collinear.
+          const v0x = s1.a.x - s0.a.x;
+          const v0y = s1.a.y - s0.a.y;
+          const v1x = s1.b.x - s0.a.x;
+          const v1y = s1.b.y - s0.a.y;
+          const cross0 = Math.abs(v0x * s0.dir.y - v0y * s0.dir.x);
+          const cross1 = Math.abs(v1x * s0.dir.y - v1y * s0.dir.x);
+          if (cross0 > eps || cross1 > eps) {
+            continue;
+          }
+
+          const projS1AOnS0 = ((s1.a.x - s0.a.x) * s0.dir.x + (s1.a.y - s0.a.y) * s0.dir.y) / s0.len;
+          const projS1BOnS0 = ((s1.b.x - s0.a.x) * s0.dir.x + (s1.b.y - s0.a.y) * s0.dir.y) / s0.len;
+          const overlapMin0 = Math.max(0, Math.min(projS1AOnS0, projS1BOnS0));
+          const overlapMax0 = Math.min(1, Math.max(projS1AOnS0, projS1BOnS0));
+
+          const projS0AOnS1 = ((s0.a.x - s1.a.x) * s1.dir.x + (s0.a.y - s1.a.y) * s1.dir.y) / s1.len;
+          const projS0BOnS1 = ((s0.b.x - s1.a.x) * s1.dir.x + (s0.b.y - s1.a.y) * s1.dir.y) / s1.len;
+          const overlapMin1 = Math.max(0, Math.min(projS0AOnS1, projS0BOnS1));
+          const overlapMax1 = Math.min(1, Math.max(projS0AOnS1, projS0BOnS1));
+
+          if (overlapMax0 - overlapMin0 <= eps || overlapMax1 - overlapMin1 <= eps) {
+            continue;
+          }
+
+          addUniqueT(s0.splitT, overlapMin0);
+          addUniqueT(s0.splitT, overlapMax0);
+          addUniqueT(s1.splitT, overlapMin1);
+          addUniqueT(s1.splitT, overlapMax1);
+        }
+      }
+
+      const pieces = [];
+      for (let i = 0; i < candidates.length; i += 1) {
+        const seg = candidates[i];
+        const ts = seg.splitT.slice().sort((a, b) => a - b);
+
+        for (let k = 0; k < ts.length - 1; k += 1) {
+          const t0 = ts[k];
+          const t1 = ts[k + 1];
+          if (t1 - t0 <= eps) {
+            continue;
+          }
+
+          const a = lerp2(seg.a, seg.b, t0);
+          const b = lerp2(seg.a, seg.b, t1);
+          const len = Math.hypot(b.x - a.x, b.y - a.y);
+          if (len <= eps) {
+            continue;
+          }
+
+          pieces.push({
+            a,
+            b,
+            len,
+            type: seg.type,
+            priority: seg.priority
+          });
+        }
+      }
+
+      function directedPieceKey(piece) {
+        return `${piece.a.x.toFixed(6)},${piece.a.y.toFixed(6)}>${piece.b.x.toFixed(6)},${piece.b.y.toFixed(6)}`;
+      }
+
+      const bestByKey = new Map();
+      for (let i = 0; i < pieces.length; i += 1) {
+        const piece = pieces[i];
+        const key = directedPieceKey(piece);
+        const existing = bestByKey.get(key);
+        if (!existing || piece.priority > existing.priority) {
+          bestByKey.set(key, piece);
+        }
+      }
+
+      const resolved = [];
+      for (const piece of bestByKey.values()) {
+        resolved.push({
+          a: { x: piece.a.x, y: piece.a.y },
+          b: { x: piece.b.x, y: piece.b.y },
+          type: piece.type
+        });
+      }
+
+      return resolved;
+    }
+
     function buildCornerMaskExtensions(sourceSegments, extensionAmount) {
       const junctions = new Map();
       const extensions = new Map();
@@ -2759,12 +2925,17 @@
       }
       levelBaseY = Number.isFinite(levelBaseY) ? levelBaseY : 0;
 
+      const resolvedSegments = resolveOverlappingSegmentsForMesh(sourceSegments);
+      if (resolvedSegments.length === 0) {
+        return mesh;
+      }
+
       const thickness = getWallThickness();
       const height = getWallHeight();
       const doorHeadHeight = getDoorHeadHeight();
       const windowOpeningGap = getWindowOpeningGap();
       const half = thickness / 2;
-      const cornerMaskExtensions = buildCornerMaskExtensions(sourceSegments, half);
+      const cornerMaskExtensions = buildCornerMaskExtensions(resolvedSegments, half);
 
       const vertexMap = new Map();
 
@@ -2849,8 +3020,8 @@
         addOrientedQuad(v3, v2, v6, v7, [endN.x, 0, endN.z]);
       }
 
-      for (let i = 0; i < sourceSegments.length; i += 1) {
-        const raw = sourceSegments[i];
+      for (let i = 0; i < resolvedSegments.length; i += 1) {
+        const raw = resolvedSegments[i];
         if (!raw || !raw.a || !raw.b) {
           continue;
         }
@@ -3717,8 +3888,19 @@
       event.preventDefault();
       if (activeTool !== "select") {
         setTool("select");
+      }
+
+      const p = getPointerPosition(event);
+      const pointer = canvasToGrid(p.x, p.y);
+      const hitIndex = findNearestSegmentIndex(pointer, () => true);
+      if (hitIndex >= 0) {
+        selectedSegmentIndices.clear();
+        selectedSegmentIndices.add(hitIndex);
+        status.textContent = "Tool changed to select. 1 line selected.";
+      } else {
         status.textContent = "Tool changed to select.";
       }
+      redraw();
     });
 
     canvas.addEventListener("wheel", event => {
