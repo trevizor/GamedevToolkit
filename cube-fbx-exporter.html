@@ -582,6 +582,7 @@
     let preview3dRuntime = null;
     let preview3dAnimationId = null;
     let preview3dResizeHandler = null;
+    let preview3dViewState = null;
 
     function getCurrentLevel() {
       return floors[currentLevelIndex];
@@ -3061,7 +3062,35 @@
       });
     }
 
+    function capturePreview3dViewState() {
+      const state = preview3dCanvas.__preview3dState;
+      if (!state || !state.camera || !state.controls || !state.controls.target) {
+        return;
+      }
+
+      preview3dViewState = {
+        cameraPosition: {
+          x: state.camera.position.x,
+          y: state.camera.position.y,
+          z: state.camera.position.z
+        },
+        cameraQuaternion: {
+          x: state.camera.quaternion.x,
+          y: state.camera.quaternion.y,
+          z: state.camera.quaternion.z,
+          w: state.camera.quaternion.w
+        },
+        target: {
+          x: state.controls.target.x,
+          y: state.controls.target.y,
+          z: state.controls.target.z
+        }
+      };
+    }
+
     function stopPreview3dLoop() {
+      capturePreview3dViewState();
+
       if (preview3dAnimationId !== null) {
         cancelAnimationFrame(preview3dAnimationId);
         preview3dAnimationId = null;
@@ -3072,6 +3101,9 @@
       }
       if (preview3dCanvas.__preview3dState) {
         const state = preview3dCanvas.__preview3dState;
+        if (state.onMouseUp) {
+          preview3dCanvas.removeEventListener("mouseup", state.onMouseUp);
+        }
         if (state.controls) {
           state.controls.dispose();
         }
@@ -3159,8 +3191,44 @@
         const center = bbox.getCenter(new THREE.Vector3());
         const radius = Math.max(size.x, size.y, size.z, 1);
 
-        controls.target.copy(center);
-        camera.position.set(center.x + radius * 1.3, center.y + radius * 1.1, center.z + radius * 1.3);
+        const hasSavedView = !!(preview3dViewState
+          && preview3dViewState.cameraPosition
+          && preview3dViewState.cameraQuaternion
+          && preview3dViewState.target
+          && [
+            preview3dViewState.cameraPosition.x,
+            preview3dViewState.cameraPosition.y,
+            preview3dViewState.cameraPosition.z,
+            preview3dViewState.cameraQuaternion.x,
+            preview3dViewState.cameraQuaternion.y,
+            preview3dViewState.cameraQuaternion.z,
+            preview3dViewState.cameraQuaternion.w,
+            preview3dViewState.target.x,
+            preview3dViewState.target.y,
+            preview3dViewState.target.z
+          ].every(Number.isFinite));
+
+        if (hasSavedView) {
+          controls.target.set(
+            preview3dViewState.target.x,
+            preview3dViewState.target.y,
+            preview3dViewState.target.z
+          );
+          camera.position.set(
+            preview3dViewState.cameraPosition.x,
+            preview3dViewState.cameraPosition.y,
+            preview3dViewState.cameraPosition.z
+          );
+          camera.quaternion.set(
+            preview3dViewState.cameraQuaternion.x,
+            preview3dViewState.cameraQuaternion.y,
+            preview3dViewState.cameraQuaternion.z,
+            preview3dViewState.cameraQuaternion.w
+          );
+        } else {
+          controls.target.copy(center);
+          camera.position.set(center.x + radius * 1.3, center.y + radius * 1.1, center.z + radius * 1.3);
+        }
         camera.near = Math.max(0.01, radius / 200);
         camera.far = Math.max(100, radius * 50);
         camera.updateProjectionMatrix();
@@ -3178,7 +3246,18 @@
         preview3dResizeHandler = resizeRenderer;
         window.addEventListener("resize", preview3dResizeHandler);
 
-        preview3dCanvas.__preview3dState = { renderer, scene, camera, controls };
+        const onPreviewMouseUp = () => {
+          capturePreview3dViewState();
+        };
+        preview3dCanvas.addEventListener("mouseup", onPreviewMouseUp);
+
+        preview3dCanvas.__preview3dState = {
+          renderer,
+          scene,
+          camera,
+          controls,
+          onMouseUp: onPreviewMouseUp
+        };
 
         const animate = () => {
           const state = preview3dCanvas.__preview3dState;
