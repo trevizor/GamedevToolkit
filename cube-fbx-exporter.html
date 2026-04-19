@@ -718,6 +718,9 @@
     let viewOffsetX = 0;
     let viewOffsetY = 0;
     let activeTool = "wall";
+    const selectedSegmentsByLevel = new Map();
+    const selectedSlabsByLevel = new Map();
+    const selectedRampsByLevel = new Map();
     let selectedSegmentIndices = new Set();
     let selectedSlabBoxIndices = new Set();
     let selectedRampIndices = new Set();
@@ -739,18 +742,63 @@
     let preview3dAnimationId = null;
     let preview3dResizeHandler = null;
     let preview3dViewState = null;
+    let pendingDuplicate = null;
 
     function getCurrentLevel() {
       return floors[currentLevelIndex];
     }
 
-    function setCurrentLevelIndex(nextIndex) {
+    function getSelectionSetForLevel(map, levelIndex) {
+      if (!map.has(levelIndex)) {
+        map.set(levelIndex, new Set());
+      }
+      return map.get(levelIndex);
+    }
+
+    function bindSelectionSetsToCurrentLevel() {
+      selectedSegmentIndices = getSelectionSetForLevel(selectedSegmentsByLevel, currentLevelIndex);
+      selectedSlabBoxIndices = getSelectionSetForLevel(selectedSlabsByLevel, currentLevelIndex);
+      selectedRampIndices = getSelectionSetForLevel(selectedRampsByLevel, currentLevelIndex);
+    }
+
+    function clearAllSelections() {
+      selectedSegmentsByLevel.clear();
+      selectedSlabsByLevel.clear();
+      selectedRampsByLevel.clear();
+      bindSelectionSetsToCurrentLevel();
+    }
+
+    function hasAnySelectionAcrossLevels() {
+      for (const set of selectedSegmentsByLevel.values()) {
+        if (set.size > 0) {
+          return true;
+        }
+      }
+      for (const set of selectedSlabsByLevel.values()) {
+        if (set.size > 0) {
+          return true;
+        }
+      }
+      for (const set of selectedRampsByLevel.values()) {
+        if (set.size > 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    bindSelectionSetsToCurrentLevel();
+
+    function setCurrentLevelIndex(nextIndex, preserveSelection) {
       const clamped = Math.max(0, Math.min(floors.length - 1, nextIndex));
       currentLevelIndex = clamped;
       segments = floors[currentLevelIndex].segments;
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      pendingDuplicate = null;
+      if (!preserveSelection) {
+        clearAllSelections();
+      } else {
+        bindSelectionSetsToCurrentLevel();
+      }
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -782,8 +830,8 @@
         button.type = "button";
         button.className = `floor-item${i === currentLevelIndex ? " active" : ""}`;
         button.textContent = `${floor.name} (${floor.segments.length})`;
-        button.addEventListener("click", () => {
-          setCurrentLevelIndex(i);
+        button.addEventListener("click", event => {
+          setCurrentLevelIndex(i, !!event.shiftKey);
           status.textContent = `Switched to ${floor.name}.`;
         });
         floorsList.appendChild(button);
@@ -798,6 +846,7 @@
       const newFloor = createLevel("", []);
       floors.splice(insertAt, 0, newFloor);
       rebuildLevelNamesIfDefault();
+      clearAllSelections();
       setCurrentLevelIndex(insertAt);
       status.textContent = `${newFloor.name} created.`;
     }
@@ -809,6 +858,7 @@
       const removedName = floors[currentLevelIndex].name;
       floors.splice(currentLevelIndex, 1);
       rebuildLevelNamesIfDefault();
+      clearAllSelections();
       setCurrentLevelIndex(Math.min(currentLevelIndex, floors.length - 1));
       status.textContent = `${removedName} removed.`;
     }
@@ -824,6 +874,7 @@
       floors.splice(targetIndex, 0, floor);
 
       rebuildLevelNamesIfDefault();
+      clearAllSelections();
       setCurrentLevelIndex(targetIndex);
       status.textContent = `${floor.name} moved ${direction < 0 ? "up" : "down"}.`;
     }
@@ -1545,7 +1596,7 @@
 
         const angleRad = normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
         const dir = { x: Math.sin(angleRad), y: Math.cos(angleRad) };
-        const arrowFlip = rampType === "half" ? -1 : 1;
+        const arrowFlip = (rampType === "tophalf") ? -1 : 1;
         const start = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy + dir.y * ramp.sy * 0.25 * arrowFlip });
         const end = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy - dir.y * ramp.sy * 0.25 * arrowFlip });
         const toLevel = Number.isFinite(Number(ramp.toLevel)) ? Number(ramp.toLevel) : currentLevelIndex;
@@ -1706,6 +1757,15 @@
     }
 
     function drawPreview() {
+      if (pendingDuplicate && pendingDuplicate.levelIndex === currentLevelIndex && pointerGrid) {
+        const previewPlacement = buildDuplicatePlacement(pendingDuplicate, pointerGrid);
+        if (previewPlacement) {
+          drawFloorSegments(previewPlacement.segments, { alpha: 0.55, tintColor: "#6366f1", isCurrent: false });
+          drawSlabBoxes(previewPlacement.slabs, { alpha: 0.5, isCurrent: false });
+          drawRamps(previewPlacement.ramps, { alpha: 0.5, isCurrent: false });
+        }
+      }
+
       if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
@@ -2012,6 +2072,183 @@
       return { x: point.x, y: point.y };
     }
 
+    function buildDuplicateSourceSelection() {
+      const segmentIndices = Array.from(selectedSegmentIndices).sort((a, b) => a - b);
+      const slabIndices = Array.from(selectedSlabBoxIndices).sort((a, b) => a - b);
+      const rampIndices = Array.from(selectedRampIndices).sort((a, b) => a - b);
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      const ramps = getCurrentLevelRamps();
+
+      const copiedSegments = [];
+      const copiedSlabs = [];
+      const copiedRamps = [];
+      const anchorPoints = [];
+
+      for (let i = 0; i < segmentIndices.length; i += 1) {
+        const seg = segments[segmentIndices[i]];
+        if (!seg) {
+          continue;
+        }
+        copiedSegments.push({
+          a: clonePoint(seg.a),
+          b: clonePoint(seg.b),
+          type: seg.type || "wall"
+        });
+        anchorPoints.push({
+          x: (seg.a.x + seg.b.x) * 0.5,
+          y: (seg.a.y + seg.b.y) * 0.5
+        });
+      }
+
+      for (let i = 0; i < slabIndices.length; i += 1) {
+        const box = slabBoxes[slabIndices[i]];
+        if (!box) {
+          continue;
+        }
+        copiedSlabs.push({
+          type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
+          cx: Number(box.cx),
+          cy: Number(box.cy),
+          sx: Number(box.sx),
+          sy: Number(box.sy),
+          rotation: Number(box.rotation) || 0
+        });
+        anchorPoints.push({ x: Number(box.cx), y: Number(box.cy) });
+      }
+
+      for (let i = 0; i < rampIndices.length; i += 1) {
+        const ramp = ramps[rampIndices[i]];
+        if (!ramp) {
+          continue;
+        }
+        const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
+        copiedRamps.push({
+          type: rampType,
+          cx: Number(ramp.cx),
+          cy: Number(ramp.cy),
+          sx: Number(ramp.sx),
+          sy: Number(ramp.sy),
+          rotation: Number(ramp.rotation) || 0,
+          fromLevel: Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : currentLevelIndex,
+          toLevel: Number.isInteger(ramp.toLevel) ? ramp.toLevel : (rampType === "half" ? currentLevelIndex : currentLevelIndex + 1)
+        });
+        anchorPoints.push({ x: Number(ramp.cx), y: Number(ramp.cy) });
+      }
+
+      if (copiedSegments.length === 0 && copiedSlabs.length === 0 && copiedRamps.length === 0) {
+        return null;
+      }
+
+      let sumX = 0;
+      let sumY = 0;
+      for (let i = 0; i < anchorPoints.length; i += 1) {
+        sumX += anchorPoints[i].x;
+        sumY += anchorPoints[i].y;
+      }
+
+      return {
+        levelIndex: currentLevelIndex,
+        anchor: {
+          x: Math.round(sumX / Math.max(1, anchorPoints.length)),
+          y: Math.round(sumY / Math.max(1, anchorPoints.length))
+        },
+        segments: copiedSegments,
+        slabs: copiedSlabs,
+        ramps: copiedRamps
+      };
+    }
+
+    function buildDuplicatePlacement(duplicate, targetGrid) {
+      if (!duplicate || !targetGrid) {
+        return null;
+      }
+
+      const dx = targetGrid.x - duplicate.anchor.x;
+      const dy = targetGrid.y - duplicate.anchor.y;
+
+      return {
+        segments: duplicate.segments.map(seg => ({
+          a: { x: seg.a.x + dx, y: seg.a.y + dy },
+          b: { x: seg.b.x + dx, y: seg.b.y + dy },
+          type: seg.type || "wall"
+        })),
+        slabs: duplicate.slabs.map(box => ({
+          type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
+          cx: box.cx + dx,
+          cy: box.cy + dy,
+          sx: box.sx,
+          sy: box.sy,
+          rotation: box.rotation
+        })),
+        ramps: duplicate.ramps.map(ramp => ({
+          type: ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full",
+          cx: ramp.cx + dx,
+          cy: ramp.cy + dy,
+          sx: ramp.sx,
+          sy: ramp.sy,
+          rotation: ramp.rotation,
+          fromLevel: ramp.fromLevel,
+          toLevel: ramp.toLevel
+        }))
+      };
+    }
+
+    function beginDuplicatePreview() {
+      const duplicate = buildDuplicateSourceSelection();
+      if (!duplicate) {
+        return false;
+      }
+      pendingDuplicate = duplicate;
+      return true;
+    }
+
+    function commitPendingDuplicateAt(targetGrid) {
+      if (!pendingDuplicate || pendingDuplicate.levelIndex !== currentLevelIndex || !targetGrid) {
+        return false;
+      }
+
+      const placed = buildDuplicatePlacement(pendingDuplicate, targetGrid);
+      if (!placed) {
+        return false;
+      }
+
+      recordUndoSnapshot();
+
+      const newSegmentIndices = [];
+      const newSlabIndices = [];
+      const newRampIndices = [];
+
+      const segmentStart = segments.length;
+      for (let i = 0; i < placed.segments.length; i += 1) {
+        segments.push(placed.segments[i]);
+        newSegmentIndices.push(segmentStart + i);
+      }
+
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      const slabStart = slabBoxes.length;
+      for (let i = 0; i < placed.slabs.length; i += 1) {
+        slabBoxes.push(placed.slabs[i]);
+        newSlabIndices.push(slabStart + i);
+      }
+
+      const ramps = getCurrentLevelRamps();
+      const rampStart = ramps.length;
+      for (let i = 0; i < placed.ramps.length; i += 1) {
+        ramps.push(placed.ramps[i]);
+        newRampIndices.push(rampStart + i);
+      }
+
+      selectedSegmentIndices = new Set(newSegmentIndices);
+      selectedSlabBoxIndices = new Set(newSlabIndices);
+      selectedRampIndices = new Set(newRampIndices);
+
+      pendingDuplicate = null;
+      queueLocalAutosave();
+      status.textContent = `Duplicated ${newSegmentIndices.length + newSlabIndices.length + newRampIndices.length} item(s).`;
+      redraw();
+      return true;
+    }
+
     function cloneProjectData(data) {
       return JSON.parse(JSON.stringify(data));
     }
@@ -2215,9 +2452,7 @@
       isErasingDrag = false;
       ellipseForceCircle = false;
       startGrid = null;
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -2272,38 +2507,78 @@
 
     function deleteSelectedSegments() {
       if (selectedSegmentIndices.size === 0 && selectedSlabBoxIndices.size === 0 && selectedRampIndices.size === 0) {
-        return 0;
+        let hasAny = false;
+        for (const set of selectedSegmentsByLevel.values()) {
+          if (set.size > 0) {
+            hasAny = true;
+            break;
+          }
+        }
+        if (!hasAny) {
+          for (const set of selectedSlabsByLevel.values()) {
+            if (set.size > 0) {
+              hasAny = true;
+              break;
+            }
+          }
+        }
+        if (!hasAny) {
+          for (const set of selectedRampsByLevel.values()) {
+            if (set.size > 0) {
+              hasAny = true;
+              break;
+            }
+          }
+        }
+        if (!hasAny) {
+          return 0;
+        }
       }
 
       recordUndoSnapshot();
 
-      const indices = Array.from(selectedSegmentIndices).sort((a, b) => b - a);
-      for (let i = 0; i < indices.length; i += 1) {
-        if (indices[i] >= 0 && indices[i] < segments.length) {
-          segments.splice(indices[i], 1);
+      let removedCount = 0;
+      for (let levelIndex = 0; levelIndex < floors.length; levelIndex += 1) {
+        const level = floors[levelIndex];
+        if (!level) {
+          continue;
+        }
+
+        const levelSegSelection = getSelectionSetForLevel(selectedSegmentsByLevel, levelIndex);
+        const segIndices = Array.from(levelSegSelection).sort((a, b) => b - a);
+        for (let i = 0; i < segIndices.length; i += 1) {
+          if (segIndices[i] >= 0 && segIndices[i] < level.segments.length) {
+            level.segments.splice(segIndices[i], 1);
+            removedCount += 1;
+          }
+        }
+
+        if (!Array.isArray(level.slabBoxes)) {
+          level.slabBoxes = [];
+        }
+        const levelSlabSelection = getSelectionSetForLevel(selectedSlabsByLevel, levelIndex);
+        const slabIndices = Array.from(levelSlabSelection).sort((a, b) => b - a);
+        for (let i = 0; i < slabIndices.length; i += 1) {
+          if (slabIndices[i] >= 0 && slabIndices[i] < level.slabBoxes.length) {
+            level.slabBoxes.splice(slabIndices[i], 1);
+            removedCount += 1;
+          }
+        }
+
+        if (!Array.isArray(level.ramps)) {
+          level.ramps = [];
+        }
+        const levelRampSelection = getSelectionSetForLevel(selectedRampsByLevel, levelIndex);
+        const rampIndices = Array.from(levelRampSelection).sort((a, b) => b - a);
+        for (let i = 0; i < rampIndices.length; i += 1) {
+          if (rampIndices[i] >= 0 && rampIndices[i] < level.ramps.length) {
+            level.ramps.splice(rampIndices[i], 1);
+            removedCount += 1;
+          }
         }
       }
 
-      const slabBoxes = getCurrentLevelSlabBoxes();
-      const slabIndices = Array.from(selectedSlabBoxIndices).sort((a, b) => b - a);
-      for (let i = 0; i < slabIndices.length; i += 1) {
-        if (slabIndices[i] >= 0 && slabIndices[i] < slabBoxes.length) {
-          slabBoxes.splice(slabIndices[i], 1);
-        }
-      }
-
-      const ramps = getCurrentLevelRamps();
-      const rampIndices = Array.from(selectedRampIndices).sort((a, b) => b - a);
-      for (let i = 0; i < rampIndices.length; i += 1) {
-        if (rampIndices[i] >= 0 && rampIndices[i] < ramps.length) {
-          ramps.splice(rampIndices[i], 1);
-        }
-      }
-
-      const removedCount = indices.length + slabIndices.length + rampIndices.length;
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -2360,6 +2635,102 @@
         }
       }
       return indices;
+    }
+
+    function boxIntersectsRect(box, rect) {
+      if (!box) {
+        return false;
+      }
+
+      const corners = getSlabBoxCorners(box);
+      if (!Array.isArray(corners) || corners.length !== 4) {
+        return false;
+      }
+
+      for (let i = 0; i < corners.length; i += 1) {
+        if (pointInRect(corners[i], rect)) {
+          return true;
+        }
+      }
+
+      const rectCorners = [
+        { x: rect.minX, y: rect.minY },
+        { x: rect.maxX, y: rect.minY },
+        { x: rect.maxX, y: rect.maxY },
+        { x: rect.minX, y: rect.maxY }
+      ];
+
+      for (let i = 0; i < rectCorners.length; i += 1) {
+        if (pointInSlabBox(rectCorners[i], box)) {
+          return true;
+        }
+      }
+
+      const rectEdges = [
+        [rectCorners[0], rectCorners[1]],
+        [rectCorners[1], rectCorners[2]],
+        [rectCorners[2], rectCorners[3]],
+        [rectCorners[3], rectCorners[0]]
+      ];
+      const boxEdges = [
+        [corners[0], corners[1]],
+        [corners[1], corners[2]],
+        [corners[2], corners[3]],
+        [corners[3], corners[0]]
+      ];
+      const eps = 1e-6;
+
+      for (let i = 0; i < boxEdges.length; i += 1) {
+        for (let j = 0; j < rectEdges.length; j += 1) {
+          const hit = segmentIntersectionParams2D(boxEdges[i][0], boxEdges[i][1], rectEdges[j][0], rectEdges[j][1]);
+          if (!hit) {
+            continue;
+          }
+          if (hit.t >= -eps && hit.t <= 1 + eps && hit.u >= -eps && hit.u <= 1 + eps) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function collectMarqueeSelection(a, b) {
+      const rect = getRectFromWorldPoints(a, b);
+      const segmentIndices = collectSegmentsInMarquee(a, b);
+      const slabIndices = [];
+      const rampIndices = [];
+
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      for (let i = 0; i < slabBoxes.length; i += 1) {
+        const box = slabBoxes[i];
+        if (!box) {
+          continue;
+        }
+        if (!isSlabTypeVisible(box.type || "floor")) {
+          continue;
+        }
+        if (boxIntersectsRect(box, rect)) {
+          slabIndices.push(i);
+        }
+      }
+
+      const ramps = getCurrentLevelRamps();
+      for (let i = 0; i < ramps.length; i += 1) {
+        const ramp = ramps[i];
+        if (!ramp) {
+          continue;
+        }
+        if (boxIntersectsRect(ramp, rect)) {
+          rampIndices.push(i);
+        }
+      }
+
+      return {
+        segments: segmentIndices,
+        slabs: slabIndices,
+        ramps: rampIndices
+      };
     }
 
     function getSingleSelectedEndpointHit(pointerWorld) {
@@ -3081,9 +3452,7 @@
         }
       }
 
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -4658,6 +5027,11 @@
       pointerGrid = canvasToGrid(p.x, p.y);
       const pointerWorld = canvasToWorld(p.x, p.y);
 
+      if (pendingDuplicate) {
+        commitPendingDuplicateAt(pointerGrid);
+        return;
+      }
+
       if (activeTool === "select") {
         const hitIndex = findNearestSegmentIndex(pointerGrid, () => true);
         const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
@@ -4683,10 +5057,11 @@
         }
 
         if (rampHitIndex >= 0 && !addMode && !removeMode) {
-          selectedSegmentIndices.clear();
-          selectedSlabBoxIndices.clear();
-          selectedRampIndices.clear();
-          selectedRampIndices.add(rampHitIndex);
+          const keepCurrentSelection = selectedRampIndices.has(rampHitIndex);
+          if (!keepCurrentSelection) {
+            clearAllSelections();
+            selectedRampIndices.add(rampHitIndex);
+          }
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4711,10 +5086,11 @@
         }
 
         if (slabHitIndex >= 0 && !addMode && !removeMode) {
-          selectedSegmentIndices.clear();
-          selectedRampIndices.clear();
-          selectedSlabBoxIndices.clear();
-          selectedSlabBoxIndices.add(slabHitIndex);
+          const keepCurrentSelection = selectedSlabBoxIndices.has(slabHitIndex);
+          if (!keepCurrentSelection) {
+            clearAllSelections();
+            selectedSlabBoxIndices.add(slabHitIndex);
+          }
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4753,10 +5129,11 @@
         }
 
         if (hitIndex >= 0 && !addMode && !removeMode) {
-          selectedSlabBoxIndices.clear();
-          selectedRampIndices.clear();
-          selectedSegmentIndices.clear();
-          selectedSegmentIndices.add(hitIndex);
+          const keepCurrentSelection = selectedSegmentIndices.has(hitIndex);
+          if (!keepCurrentSelection) {
+            clearAllSelections();
+            selectedSegmentIndices.add(hitIndex);
+          }
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4776,9 +5153,7 @@
           status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         } else {
           if (!addMode && !removeMode) {
-            selectedSegmentIndices.clear();
-            selectedSlabBoxIndices.clear();
-            selectedRampIndices.clear();
+            clearAllSelections();
           }
           isMarqueeSelecting = true;
           marqueeStartWorld = clonePoint(pointerWorld);
@@ -5022,21 +5397,31 @@
 
       if (activeTool === "select") {
         if (isMarqueeSelecting && marqueeStartWorld && marqueeEndWorld) {
-          const hits = collectSegmentsInMarquee(marqueeStartWorld, marqueeEndWorld);
+          const hits = collectMarqueeSelection(marqueeStartWorld, marqueeEndWorld);
 
           if (marqueeMode === "replace") {
-            selectedSegmentIndices.clear();
-            selectedSlabBoxIndices.clear();
-            selectedRampIndices.clear();
+            clearAllSelections();
           }
 
           if (marqueeMode === "add" || marqueeMode === "replace") {
-            for (let i = 0; i < hits.length; i += 1) {
-              selectedSegmentIndices.add(hits[i]);
+            for (let i = 0; i < hits.segments.length; i += 1) {
+              selectedSegmentIndices.add(hits.segments[i]);
+            }
+            for (let i = 0; i < hits.slabs.length; i += 1) {
+              selectedSlabBoxIndices.add(hits.slabs[i]);
+            }
+            for (let i = 0; i < hits.ramps.length; i += 1) {
+              selectedRampIndices.add(hits.ramps[i]);
             }
           } else if (marqueeMode === "remove") {
-            for (let i = 0; i < hits.length; i += 1) {
-              selectedSegmentIndices.delete(hits[i]);
+            for (let i = 0; i < hits.segments.length; i += 1) {
+              selectedSegmentIndices.delete(hits.segments[i]);
+            }
+            for (let i = 0; i < hits.slabs.length; i += 1) {
+              selectedSlabBoxIndices.delete(hits.slabs[i]);
+            }
+            for (let i = 0; i < hits.ramps.length; i += 1) {
+              selectedRampIndices.delete(hits.ramps[i]);
             }
           }
 
@@ -5208,27 +5593,19 @@
       const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
       const rampHitIndex = findTopmostRampIndex(pointerWorld, () => true);
       if (rampHitIndex >= 0) {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         selectedRampIndices.add(rampHitIndex);
         status.textContent = "Tool changed to select. 1 ramp selected.";
       } else if (slabHitIndex >= 0) {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         selectedSlabBoxIndices.add(slabHitIndex);
         status.textContent = "Tool changed to select. 1 slab box selected.";
       } else if (hitIndex >= 0) {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         selectedSegmentIndices.add(hitIndex);
         status.textContent = "Tool changed to select. 1 line selected.";
       } else {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         status.textContent = "Tool changed to select.";
       }
       redraw();
@@ -5266,24 +5643,39 @@
         }
       } else if (isPrimaryModifier && key === "a") {
         event.preventDefault();
-        selectedSegmentIndices = new Set();
-        for (let i = 0; i < segments.length; i += 1) {
-          selectedSegmentIndices.add(i);
-        }
-        selectedSlabBoxIndices = new Set();
-        const slabBoxes = getCurrentLevelSlabBoxes();
-        for (let i = 0; i < slabBoxes.length; i += 1) {
-          if (slabBoxes[i] && isSlabTypeVisible(slabBoxes[i].type || "floor")) {
-            selectedSlabBoxIndices.add(i);
+        clearAllSelections();
+        for (let levelIndex = 0; levelIndex < floors.length; levelIndex += 1) {
+          const level = floors[levelIndex];
+          if (!level) {
+            continue;
+          }
+
+          const levelSegSelection = getSelectionSetForLevel(selectedSegmentsByLevel, levelIndex);
+          for (let i = 0; i < level.segments.length; i += 1) {
+            levelSegSelection.add(i);
+          }
+
+          const levelSlabSelection = getSelectionSetForLevel(selectedSlabsByLevel, levelIndex);
+          const slabBoxes = Array.isArray(level.slabBoxes) ? level.slabBoxes : [];
+          for (let i = 0; i < slabBoxes.length; i += 1) {
+            const slab = slabBoxes[i];
+            if (!slab) {
+              continue;
+            }
+            if (isSlabTypeVisible(slab.type || "floor")) {
+              levelSlabSelection.add(i);
+            }
+          }
+
+          const levelRampSelection = getSelectionSetForLevel(selectedRampsByLevel, levelIndex);
+          const ramps = Array.isArray(level.ramps) ? level.ramps : [];
+          for (let i = 0; i < ramps.length; i += 1) {
+            if (ramps[i]) {
+              levelRampSelection.add(i);
+            }
           }
         }
-        selectedRampIndices = new Set();
-        const ramps = getCurrentLevelRamps();
-        for (let i = 0; i < ramps.length; i += 1) {
-          if (ramps[i]) {
-            selectedRampIndices.add(i);
-          }
-        }
+        bindSelectionSetsToCurrentLevel();
         isMarqueeSelecting = false;
         marqueeStartWorld = null;
         marqueeEndWorld = null;
@@ -5292,7 +5684,7 @@
         status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         redraw();
       } else if (key === "delete" || key === "backspace") {
-        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+        if (hasAnySelectionAcrossLevels()) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
@@ -5300,7 +5692,7 @@
         }
       } else if (key === "x") {
         event.preventDefault();
-        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+        if (hasAnySelectionAcrossLevels()) {
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
           redraw();
@@ -5322,6 +5714,14 @@
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
+      } else if (!isPrimaryModifier && key === "c") {
+        event.preventDefault();
+        if (beginDuplicatePreview()) {
+          status.textContent = "Duplicate preview active. Move cursor and click to place. Press ESC to cancel.";
+          redraw();
+        } else {
+          status.textContent = "Select at least one line, slab, or ramp before copying.";
+        }
       } else if ((key === "q" || key === "e") && activeTool === "select" && (selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0)) {
         event.preventDefault();
         recordUndoSnapshot();
@@ -5363,7 +5763,12 @@
         status.textContent = `${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? (activeTool === "halframp" ? "Half ramp" : activeTool === "tophalframp" ? "Top half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
       } else if (key === "escape") {
-        if (!helpOverlay.classList.contains("hidden")) {
+        if (pendingDuplicate) {
+          event.preventDefault();
+          pendingDuplicate = null;
+          status.textContent = "Duplicate preview canceled.";
+          redraw();
+        } else if (!helpOverlay.classList.contains("hidden")) {
           event.preventDefault();
           closeHelp();
           status.textContent = "Help closed.";
@@ -5420,7 +5825,7 @@
         }
         floors[i].ramps.length = 0;
       }
-      selectedSegmentIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
