@@ -235,11 +235,14 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
             int fromLevel = ramp.fromLevel >= 0 ? ramp.fromLevel : currentFloorIndex;
             int toLevel = ramp.toLevel >= 0 ? ramp.toLevel : (currentFloorIndex + 1);
-            float startY = fromLevel * floorStride;
             string rampType = string.IsNullOrWhiteSpace(ramp.type) ? "full" : ramp.type.Trim().ToLowerInvariant();
             bool isHalfRamp = rampType == "half";
+            bool isTopHalfRamp = rampType == "tophalf";
+            float baseStartY = fromLevel * floorStride;
+            float halfTopY = baseStartY + wallHeight * HALF_WALL_HEIGHT_FACTOR + slabThickness * SLAB_Y_OFFSET_FACTOR;
+            float startY = isTopHalfRamp ? halfTopY : baseStartY;
             float endY = isHalfRamp
-                ? startY + wallHeight * HALF_WALL_HEIGHT_FACTOR + slabThickness * SLAB_Y_OFFSET_FACTOR
+                ? halfTopY
                 : toLevel * floorStride;
             float rise = Mathf.Abs(endY - startY);
             if (rise <= 0.0001f)

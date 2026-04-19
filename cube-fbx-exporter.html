@@ -376,6 +376,81 @@
       cursor: grab;
       background: linear-gradient(180deg, #f4f9ff 0%, #dce9ff 100%);
     }
+
+    .help-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 34, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1001;
+      padding: 20px;
+    }
+
+    .help-overlay.hidden {
+      display: none;
+    }
+
+    .help-card {
+      width: min(860px, 96vw);
+      max-height: min(780px, 92vh);
+      overflow: auto;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 18px 40px rgba(15, 35, 65, 0.24);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .help-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .help-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #21406e;
+      letter-spacing: 0.02em;
+    }
+
+    .help-content {
+      color: #284363;
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .help-content h3 {
+      margin: 12px 0 6px;
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #2f537f;
+    }
+
+    .help-content p,
+    .help-content ul,
+    .help-content ol {
+      margin: 0 0 8px;
+    }
+
+    .help-content a {
+      color: #1458b8;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .help-content a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -391,6 +466,7 @@
       <button id="undoBtn" type="button" class="secondary">Undo</button>
       <button id="redoBtn" type="button" class="secondary">Redo</button>
       <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
+      <button id="helpBtn" type="button" class="secondary">Help</button>
       <button id="exportPropsToggleBtn" type="button" class="secondary props-toggle" aria-expanded="false">Show Export Properties</button>
       <div id="exportPropsPanel" class="export-props-panel hidden">
         <label class="field">Thickness
@@ -437,16 +513,13 @@
       <div class="tool-group" aria-label="R group tools">
         <button id="toolRampBtn" type="button" class="secondary tool" title="Shortcut: R (cycles R group)">Ramp</button>
         <button id="toolHalfRampBtn" type="button" class="secondary tool" title="Shortcut: R (cycles R group)">Half Ramp</button>
+        <button id="toolTopHalfRampBtn" type="button" class="secondary tool" title="Shortcut: R (cycles R group)">Top Half Ramp</button>
       </div>
       <div class="tool-group" aria-label="S group tools">
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
       </div>
       <div class="tool-group" aria-label="X group tools">
         <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: X (cycles X group)">Remove Wall</button>
-      </div>
-      <div class="tool-group" aria-label="View tools">
-        <button id="floorVisibilityToggleBtn" type="button" class="secondary">Show Floor Boxes</button>
-        <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
       </div>
     </div>
 
@@ -475,6 +548,11 @@
           <button id="floorRemoveBtn" type="button" class="secondary">Remove</button>
           <button id="onionToggleBtn" type="button" class="secondary">Onion View: On</button>
         </div>
+        <div class="floors-header">Visibility</div>
+        <div class="floors-actions">
+          <button id="floorVisibilityToggleBtn" type="button" class="secondary">Show Floor Boxes</button>
+          <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
+        </div>
         <div id="floorsList" class="floors-list"></div>
       </aside>
     </div>
@@ -494,6 +572,53 @@
       </div>
       <div class="preview3d-canvas-wrap">
         <canvas id="preview3dCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="helpOverlay" class="help-overlay hidden" aria-hidden="true">
+    <div class="help-card" role="dialog" aria-label="Tool help">
+      <div class="help-topbar">
+        <span class="help-title">Plan Maker Help</span>
+        <button id="helpCloseBtn" type="button" class="secondary">Close</button>
+      </div>
+      <div class="help-content">
+        <h3>Basics</h3>
+        <ul>
+          <li>Pick a tool, then click-drag on the canvas to place geometry.</li>
+          <li>Use the right Levels panel to add/reorder/remove levels and toggle Onion View.</li>
+          <li>Use Save Plan to generate JSON and Load Plan to restore it.</li>
+          <li>Use Export Model for GLB output or Preview 3D to inspect geometry.</li>
+        </ul>
+
+        <h3>Selection and Editing</h3>
+        <ul>
+          <li>Select/Move tool: click to select, drag to move, drag in empty area for marquee select.</li>
+          <li>Use Shift to add to selection and Ctrl to remove from selection.</li>
+          <li>Press Delete/Backspace or X to remove selected items.</li>
+          <li>With slabs/ramps selected, Q/E rotates selection.</li>
+        </ul>
+
+        <h3>Shortcuts</h3>
+        <ul>
+          <li>W cycles wall tools, D cycles door/window/cut, F cycles slab tools, R cycles ramp tools, S select, X erase/delete.</li>
+          <li>Ctrl/Cmd+Z undo, Ctrl/Cmd+Y redo, Ctrl/Cmd+A select all visible items.</li>
+          <li>Middle mouse button pans the canvas, mouse wheel zooms.</li>
+        </ul>
+
+        <h3>Unity Usage</h3>
+        <ol>
+          <li>In this editor, click Save Plan and keep the generated JSON file.</li>
+          <li>In Unity, add the script to a GameObject and assign your prefabs plus the JSON TextAsset.</li>
+          <li>Click Build From Assigned JSON in the component context menu, or use the inspector button provided by the editor script.</li>
+          <li>The importer spawns walls, doors/windows openings, slabs, ramps, half ramps, and top half ramps according to the JSON.</li>
+        </ol>
+        <p>
+          Unity scripts:
+          <a href="PlanJsonCubeSpawner.cs" target="_blank" rel="noopener">PlanJsonCubeSpawner.cs</a>
+          |
+          <a href="Editor/PlanJsonCubeSpawnerEditor.cs" target="_blank" rel="noopener">Editor/PlanJsonCubeSpawnerEditor.cs</a>
+        </p>
       </div>
     </div>
   </div>
@@ -521,6 +646,7 @@
     const undoButton = document.getElementById("undoBtn");
     const redoButton = document.getElementById("redoBtn");
     const clearButton = document.getElementById("clearBtn");
+    const helpButton = document.getElementById("helpBtn");
     const toolWallButton = document.getElementById("toolWallBtn");
     const toolBoxButton = document.getElementById("toolBoxBtn");
     const toolEllipseButton = document.getElementById("toolEllipseBtn");
@@ -533,6 +659,7 @@
     const toolHalfWallBoxButton = document.getElementById("toolHalfWallBoxBtn");
     const toolRampButton = document.getElementById("toolRampBtn");
     const toolHalfRampButton = document.getElementById("toolHalfRampBtn");
+    const toolTopHalfRampButton = document.getElementById("toolTopHalfRampBtn");
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
@@ -563,6 +690,8 @@
     const preview3dOverlay = document.getElementById("preview3dOverlay");
     const preview3dCloseButton = document.getElementById("preview3dCloseBtn");
     const preview3dCanvas = document.getElementById("preview3dCanvas");
+    const helpOverlay = document.getElementById("helpOverlay");
+    const helpCloseButton = document.getElementById("helpCloseBtn");
 
     function createLevel(name, levelSegments, levelSlabBoxes, levelRamps) {
       return {
@@ -712,6 +841,7 @@
       halfwallbox: toolHalfWallBoxButton,
       ramp: toolRampButton,
       halframp: toolHalfRampButton,
+      tophalframp: toolTopHalfRampButton,
       select: toolSelectButton,
       erase: toolEraseButton
     };
@@ -1324,11 +1454,12 @@
       const sx = Math.max(1, maxX - minX);
       const sy = Math.max(1, maxY - minY);
       const fromLevel = currentLevelIndex;
-      const isHalfRamp = rampType === "half";
-      const toLevel = isHalfRamp ? currentLevelIndex : Math.min(floors.length - 1, currentLevelIndex + 1);
+      const normalizedType = rampType === "half" || rampType === "tophalf" ? rampType : "full";
+      const requiresUpperLevel = normalizedType === "full" || normalizedType === "tophalf";
+      const toLevel = requiresUpperLevel ? Math.min(floors.length - 1, currentLevelIndex + 1) : currentLevelIndex;
 
       return {
-        type: isHalfRamp ? "half" : "full",
+        type: normalizedType,
         cx: (minX + maxX) * 0.5,
         cy: (minY + maxY) * 0.5,
         sx,
@@ -1397,24 +1528,29 @@
           ctx.lineTo(pc.x, pc.y);
         }
         ctx.closePath();
-        const isHalfRamp = (ramp.type || "full") === "half";
-        ctx.fillStyle = isHalfRamp
+        const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
+        ctx.fillStyle = rampType === "half"
           ? (isCurrent ? "rgba(251,113,133,0.20)" : "rgba(251,113,133,0.14)")
-          : (isCurrent ? "rgba(245,158,11,0.20)" : "rgba(251,191,36,0.14)");
-        ctx.strokeStyle = isHalfRamp
+          : rampType === "tophalf"
+            ? (isCurrent ? "rgba(168,85,247,0.20)" : "rgba(192,132,252,0.14)")
+            : (isCurrent ? "rgba(245,158,11,0.20)" : "rgba(251,191,36,0.14)");
+        ctx.strokeStyle = rampType === "half"
           ? (isCurrent ? "#9f1239" : "#e11d48")
-          : (isCurrent ? "#b45309" : "#f59e0b");
+          : rampType === "tophalf"
+            ? (isCurrent ? "#6d28d9" : "#a855f7")
+            : (isCurrent ? "#b45309" : "#f59e0b");
         ctx.lineWidth = 2;
         ctx.fill();
         ctx.stroke();
 
         const angleRad = normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
         const dir = { x: Math.sin(angleRad), y: Math.cos(angleRad) };
-        const start = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25, y: ramp.cy - dir.y * ramp.sy * 0.25 });
-        const end = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25, y: ramp.cy + dir.y * ramp.sy * 0.25 });
+        const arrowFlip = rampType === "half" ? -1 : 1;
+        const start = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy + dir.y * ramp.sy * 0.25 * arrowFlip });
+        const end = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy - dir.y * ramp.sy * 0.25 * arrowFlip });
         const toLevel = Number.isFinite(Number(ramp.toLevel)) ? Number(ramp.toLevel) : currentLevelIndex;
         const fromLevel = Number.isFinite(Number(ramp.fromLevel)) ? Number(ramp.fromLevel) : currentLevelIndex;
-        const rises = isHalfRamp || toLevel > fromLevel;
+        const rises = rampType === "half" || toLevel > fromLevel;
 
         ctx.strokeStyle = rises ? "#92400e" : "#9ca3af";
         ctx.lineWidth = 2;
@@ -1570,7 +1706,7 @@
     }
 
     function drawPreview() {
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
           if (points.length >= 3) {
@@ -1631,12 +1767,16 @@
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
-        } else if (activeTool === "ramp" || activeTool === "halframp") {
-          const previewRamp = createRampFromDrag(startGrid, pointerGrid, activeTool === "halframp" ? "half" : "full");
+        } else if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
+          const previewRamp = createRampFromDrag(
+            startGrid,
+            pointerGrid,
+            activeTool === "halframp" ? "half" : activeTool === "tophalframp" ? "tophalf" : "full"
+          );
           const corners = getSlabBoxCorners(previewRamp);
           ctx.lineWidth = 2;
-          ctx.strokeStyle = activeTool === "halframp" ? "#9f1239" : "#b45309";
-          ctx.fillStyle = activeTool === "halframp" ? "rgba(251,113,133,0.18)" : "rgba(245,158,11,0.18)";
+          ctx.strokeStyle = activeTool === "halframp" ? "#9f1239" : activeTool === "tophalframp" ? "#6d28d9" : "#b45309";
+          ctx.fillStyle = activeTool === "halframp" ? "rgba(251,113,133,0.18)" : activeTool === "tophalframp" ? "rgba(168,85,247,0.18)" : "rgba(245,158,11,0.18)";
           ctx.beginPath();
           const p0 = gridToCanvas(corners[0]);
           ctx.moveTo(p0.x, p0.y);
@@ -1830,9 +1970,10 @@
       const ceilingSlabCount = slabBoxes.filter(box => box && box.type === "ceiling").length;
       const halfWallSlabCount = slabBoxes.filter(box => box && box.type === "halfwall").length;
       const ramps = getCurrentLevel().ramps || [];
-      const rampCount = ramps.filter(ramp => ramp && (ramp.type || "full") !== "half").length;
+      const rampCount = ramps.filter(ramp => ramp && (ramp.type || "full") === "full").length;
       const halfRampCount = ramps.filter(ramp => ramp && (ramp.type || "full") === "half").length;
-      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount} | Half Wall Boxes: ${halfWallSlabCount} | Ramps: ${rampCount} | Half Ramps: ${halfRampCount}`;
+      const topHalfRampCount = ramps.filter(ramp => ramp && (ramp.type || "full") === "tophalf").length;
+      meta.textContent = `Grid: ${GRID_SIZE_UNITS} | Height: ${wallHeight} | Thickness: ${wallThickness} | Door Height: ${doorHeight} | Door Width: ${doorWidth} | Window Gap: ${windowGap} | Join: ${joinModeSelect.value} | Tool: ${activeTool} | Level: ${currentLevelIndex + 1}/${floors.length} | Walls: ${wallCount} | Half Walls: ${halfWallCount} | Doors: ${doorCount} | Windows: ${windowCount} | Floor Boxes: ${floorSlabCount} | Ceiling Boxes: ${ceilingSlabCount} | Half Wall Boxes: ${halfWallSlabCount} | Ramps: ${rampCount} | Half Ramps: ${halfRampCount} | Top Half Ramps: ${topHalfRampCount}`;
     }
 
     function getDoorWidthGrid() {
@@ -2100,8 +2241,9 @@
 
       if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         status.textContent = `Tool changed to ${activeTool}. Drag to place box. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
-      } else if (activeTool === "ramp" || activeTool === "halframp") {
-        status.textContent = `Tool changed to ${activeTool === "halframp" ? "half ramp" : "ramp"}. Drag to place ramp. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
+      } else if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
+        const rampLabel = activeTool === "halframp" ? "half ramp" : activeTool === "tophalframp" ? "top half ramp" : "ramp";
+        status.textContent = `Tool changed to ${rampLabel}. Drag to place ramp. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
       } else {
         status.textContent = `Tool changed to ${activeTool}.`;
       }
@@ -2692,7 +2834,7 @@
           rotation: Number(box.rotation) || 0
         })),
         ramps: (Array.isArray(floor.ramps) ? floor.ramps : []).map(ramp => ({
-          type: ramp.type === "half" ? "half" : "full",
+          type: ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full",
           cx: Number(ramp.cx),
           cy: Number(ramp.cy),
           sx: Number(ramp.sx),
@@ -2854,7 +2996,7 @@
             continue;
           }
           const fromLevel = Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : defaultLevel;
-          const rampType = ramp.type === "half" ? "half" : "full";
+          const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
           const toLevel = Number.isInteger(ramp.toLevel)
             ? ramp.toLevel
             : (rampType === "half" ? defaultLevel : (defaultLevel + 1));
@@ -4202,12 +4344,13 @@
             const sx = Number(ramp.sx) * GRID_SIZE_UNITS;
             const sz = Number(ramp.sy) * GRID_SIZE_UNITS;
             const rotation = Number(ramp.rotation) || 0;
-            const rampType = ramp.type === "half" ? "half" : "full";
+            const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
             const fromLevel = Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : i;
             const toLevel = Number.isInteger(ramp.toLevel) ? ramp.toLevel : (i + 1);
-            const startY = fromLevel * floorStride;
+            const halfTopY = fromLevel * floorStride + getWallHeight() * HALF_WALL_HEIGHT_FACTOR + slabYOffset;
+            const startY = rampType === "tophalf" ? halfTopY : fromLevel * floorStride;
             const endY = rampType === "half"
-              ? startY + getWallHeight() * HALF_WALL_HEIGHT_FACTOR + slabYOffset
+              ? halfTopY
               : toLevel * floorStride;
             appendRampWedge(cx, cz, sx, sz, startY, endY, rotation, "floor");
           }
@@ -4324,6 +4467,16 @@
       stopPreview3dLoop();
       preview3dOverlay.classList.add("hidden");
       preview3dOverlay.setAttribute("aria-hidden", "true");
+    }
+
+    function openHelp() {
+      helpOverlay.classList.remove("hidden");
+      helpOverlay.setAttribute("aria-hidden", "false");
+    }
+
+    function closeHelp() {
+      helpOverlay.classList.add("hidden");
+      helpOverlay.setAttribute("aria-hidden", "true");
     }
 
     async function openPreview3d() {
@@ -4530,16 +4683,10 @@
         }
 
         if (rampHitIndex >= 0 && !addMode && !removeMode) {
-          if (!selectedRampIndices.has(rampHitIndex)) {
-            if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
-              selectedRampIndices.add(rampHitIndex);
-            } else {
-              selectedRampIndices.clear();
-              selectedRampIndices.add(rampHitIndex);
-              selectedSegmentIndices.clear();
-              selectedSlabBoxIndices.clear();
-            }
-          }
+          selectedSegmentIndices.clear();
+          selectedSlabBoxIndices.clear();
+          selectedRampIndices.clear();
+          selectedRampIndices.add(rampHitIndex);
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4564,16 +4711,10 @@
         }
 
         if (slabHitIndex >= 0 && !addMode && !removeMode) {
-          if (!selectedSlabBoxIndices.has(slabHitIndex)) {
-            if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
-              selectedSlabBoxIndices.add(slabHitIndex);
-            } else {
-              selectedSlabBoxIndices.clear();
-              selectedSlabBoxIndices.add(slabHitIndex);
-              selectedSegmentIndices.clear();
-              selectedRampIndices.clear();
-            }
-          }
+          selectedSegmentIndices.clear();
+          selectedRampIndices.clear();
+          selectedSlabBoxIndices.clear();
+          selectedSlabBoxIndices.add(slabHitIndex);
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4612,16 +4753,10 @@
         }
 
         if (hitIndex >= 0 && !addMode && !removeMode) {
-          if (!selectedSegmentIndices.has(hitIndex)) {
-            if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
-              selectedSegmentIndices.add(hitIndex);
-            } else {
-              selectedSegmentIndices.clear();
-              selectedSegmentIndices.add(hitIndex);
-              selectedSlabBoxIndices.clear();
-              selectedRampIndices.clear();
-            }
-          }
+          selectedSlabBoxIndices.clear();
+          selectedRampIndices.clear();
+          selectedSegmentIndices.clear();
+          selectedSegmentIndices.add(hitIndex);
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4682,7 +4817,7 @@
         return;
       }
 
-      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp") {
+      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
         startGrid = clonePoint(pointerGrid);
         drawing = true;
         redraw();
@@ -5003,16 +5138,18 @@
         queueLocalAutosave();
         const slabLabel = slabType === "ceiling" ? "Ceiling" : slabType === "halfwall" ? "Half wall" : "Floor";
         status.textContent = `${slabLabel} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
-      } else if (activeTool === "ramp" || activeTool === "halframp") {
-        if (activeTool === "ramp" && currentLevelIndex >= floors.length - 1) {
+      } else if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
+        if ((activeTool === "ramp" || activeTool === "tophalframp") && currentLevelIndex >= floors.length - 1) {
           status.textContent = "Ramp requires an upper level. Add a level above first.";
         } else {
           const ramps = getCurrentLevelRamps();
-          const ramp = createRampFromDrag(startGrid, endGrid, activeTool === "halframp" ? "half" : "full");
+          const ramp = createRampFromDrag(startGrid, endGrid, activeTool === "halframp" ? "half" : activeTool === "tophalframp" ? "tophalf" : "full");
           ramps.push(ramp);
           queueLocalAutosave();
           if ((ramp.type || "full") === "half") {
             status.textContent = `Half ramp added on level ${ramp.fromLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
+          } else if ((ramp.type || "full") === "tophalf") {
+            status.textContent = `Top half ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
           } else {
             status.textContent = `Ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
           }
@@ -5178,7 +5315,7 @@
         cycleToolGroup(["floorbox", "ceilingbox", "halfwallbox"], "F group");
       } else if (key === "r") {
         event.preventDefault();
-        cycleToolGroup(["ramp", "halframp"], "R group");
+        cycleToolGroup(["ramp", "halframp", "tophalframp"], "R group");
       } else if (key === "s") {
         event.preventDefault();
         cycleToolGroup(["select"], "S group");
@@ -5215,16 +5352,26 @@
         queueLocalAutosave();
         status.textContent = `Updated selection: rotated ${slabIndices.length} slab box(es) and changed direction of ${rampIndices.length} ramp(s).`;
         redraw();
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp") && key === "q") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") && key === "q") {
         event.preventDefault();
-        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - ((activeTool === "ramp" || activeTool === "halframp") ? 90 : 15));
-        status.textContent = `${(activeTool === "ramp" || activeTool === "halframp") ? (activeTool === "halframp" ? "Half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - ((activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? 90 : 15));
+        status.textContent = `${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? (activeTool === "halframp" ? "Half ramp" : activeTool === "tophalframp" ? "Top half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp") && key === "e") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") && key === "e") {
         event.preventDefault();
-        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + ((activeTool === "ramp" || activeTool === "halframp") ? 90 : 15));
-        status.textContent = `${(activeTool === "ramp" || activeTool === "halframp") ? (activeTool === "halframp" ? "Half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + ((activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? 90 : 15));
+        status.textContent = `${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? (activeTool === "halframp" ? "Half ramp" : activeTool === "tophalframp" ? "Top half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
+      } else if (key === "escape") {
+        if (!helpOverlay.classList.contains("hidden")) {
+          event.preventDefault();
+          closeHelp();
+          status.textContent = "Help closed.";
+        } else if (!preview3dOverlay.classList.contains("hidden")) {
+          event.preventDefault();
+          closePreview3d();
+          status.textContent = "3D preview closed.";
+        }
       }
     });
 
@@ -5286,6 +5433,11 @@
       redraw();
     });
 
+    helpButton.addEventListener("click", () => {
+      openHelp();
+      status.textContent = "Help opened.";
+    });
+
     saveButton.addEventListener("click", () => {
       saveProject();
     });
@@ -5314,6 +5466,7 @@
     toolHalfWallBoxButton.addEventListener("click", () => setTool("halfwallbox"));
     toolRampButton.addEventListener("click", () => setTool("ramp"));
     toolHalfRampButton.addEventListener("click", () => setTool("halframp"));
+    toolTopHalfRampButton.addEventListener("click", () => setTool("tophalframp"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 
@@ -5408,6 +5561,18 @@
       if (event.target === preview3dOverlay) {
         closePreview3d();
         status.textContent = "3D preview closed.";
+      }
+    });
+
+    helpCloseButton.addEventListener("click", () => {
+      closeHelp();
+      status.textContent = "Help closed.";
+    });
+
+    helpOverlay.addEventListener("click", event => {
+      if (event.target === helpOverlay) {
+        closeHelp();
+        status.textContent = "Help closed.";
       }
     });
 
