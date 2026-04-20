@@ -187,10 +187,19 @@
     }
 
     #status {
-      margin-top: 12px;
+      margin-top: 0;
       min-height: 1.4em;
       color: var(--muted);
       font-size: 0.81rem;
+    }
+
+    .bottom-bar {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+      min-width: 0;
     }
 
     .canvas-wrap {
@@ -258,6 +267,51 @@
       gap: 5px;
       overflow: auto;
       padding-right: 1px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .legend-panel {
+      border: 1px solid #d7e3f5;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .legend-section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #33507a;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      color: #264361;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid rgba(15, 23, 34, 0.2);
+      flex: 0 0 auto;
+    }
+
+    .legend-swatch.line {
+      width: 16px;
+      height: 0;
+      border-radius: 0;
+      border: 0;
+      border-top: 3px solid currentColor;
     }
 
     .floor-item {
@@ -289,7 +343,7 @@
     }
 
     .zoom-bar {
-      margin-top: 8px;
+      margin-top: 0;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #f7faff;
@@ -551,16 +605,6 @@
         <div class="canvas-wrap">
           <canvas id="planCanvas" width="920" height="560"></canvas>
         </div>
-
-        <div class="zoom-bar" aria-label="Canvas zoom controls">
-          <span class="label">Canvas Zoom</span>
-          <button id="zoomOutBtn" type="button" class="secondary">-</button>
-          <button id="zoomInBtn" type="button" class="secondary">+</button>
-          <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
-          <button id="centerOriginBtn" type="button" class="secondary">Center Origin</button>
-          <span id="zoomReadout" class="zoom-readout">100%</span>
-          <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
-        </div>
       </div>
 
       <aside class="floors-panel" aria-label="Level controls">
@@ -578,10 +622,39 @@
           <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
         </div>
         <div id="floorsList" class="floors-list"></div>
+        <div class="floors-header">Legend</div>
+        <div class="legend-panel" aria-label="Canvas color legend">
+          <div class="legend-section-title">Lines</div>
+          <div class="legend-row" style="color:#0f1722"><span class="legend-swatch line" aria-hidden="true"></span><span>Wall</span></div>
+          <div class="legend-row" style="color:#0e7490"><span class="legend-swatch line" aria-hidden="true"></span><span>Half Wall</span></div>
+          <div class="legend-row" style="color:#d97706"><span class="legend-swatch line" aria-hidden="true"></span><span>Door</span></div>
+          <div class="legend-row" style="color:#0891b2"><span class="legend-swatch line" aria-hidden="true"></span><span>Window</span></div>
+
+          <div class="legend-section-title">Slabs</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(16,185,129,0.18); border-color:#059669" aria-hidden="true"></span><span>Floor Box</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(59,130,246,0.18); border-color:#2563eb" aria-hidden="true"></span><span>Ceiling Box</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(14,116,144,0.18); border-color:#0e7490" aria-hidden="true"></span><span>Half Wall Box</span></div>
+
+          <div class="legend-section-title">Ramps</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(245,158,11,0.20); border-color:#b45309" aria-hidden="true"></span><span>Ramp</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(251,113,133,0.20); border-color:#9f1239" aria-hidden="true"></span><span>Half Ramp</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(168,85,247,0.20); border-color:#6d28d9" aria-hidden="true"></span><span>Top Half Ramp</span></div>
+        </div>
       </aside>
     </div>
 
-    <div id="status" aria-live="polite"></div>
+    <div class="bottom-bar">
+      <div class="zoom-bar" aria-label="Canvas zoom controls">
+        <span class="label">Canvas Zoom</span>
+        <button id="zoomOutBtn" type="button" class="secondary">-</button>
+        <button id="zoomInBtn" type="button" class="secondary">+</button>
+        <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
+        <button id="centerOriginBtn" type="button" class="secondary">Center Origin</button>
+        <span id="zoomReadout" class="zoom-readout">100%</span>
+        <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
+      </div>
+      <div id="status" aria-live="polite"></div>
+    </div>
     <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
   </main>
 
