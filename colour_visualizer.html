@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No Man's Sky EXML Colour Visualizer</title>
+  <style>
+    :root {
+      --bg: #0f141a;
+      --bg-soft: #17202b;
+      --panel: #1e2a36;
+      --panel-2: #243242;
+      --text: #e8f0f7;
+      --text-dim: #9fb2c3;
+      --accent: #4ecdc4;
+      --accent-2: #ffd166;
+      --border: #304255;
+      --ok: #6ee7b7;
+      --warn: #ff9f6e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 20% -10%, #24374a 0%, transparent 60%),
+        radial-gradient(900px 500px at 90% 0%, #2d2345 0%, transparent 55%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .container {
+      width: min(1200px, 96vw);
+      margin: 24px auto 40px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.4rem, 2.4vw, 2.1rem);
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      margin: 0 0 18px;
+      color: var(--text-dim);
+    }
+
+    .controls {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="file"], button {
+      font: inherit;
+      color: var(--text);
+      background: #15202b;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 12px;
+    }
+
+    button {
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #121b24;
+      color: var(--text);
+      padding: 10px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.9rem;
+    }
+
+    .status {
+      font-size: 0.92rem;
+      color: var(--text-dim);
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .pill {
+      background: #15202b;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+    }
+
+    .groups {
+      display: grid;
+      gap: 14px;
+    }
+
+    .group {
+      background: linear-gradient(180deg, rgba(36, 50, 66, 0.92), rgba(22, 31, 41, 0.92));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.15);
+      font-size: 0.92rem;
+    }
+
+    .group-title {
+      font-weight: 600;
+      color: var(--accent-2);
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .swatch {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #15202b;
+    }
+
+    .swatch-color {
+      height: 58px;
+      border-bottom: 1px solid var(--border);
+      background: #000;
+    }
+
+    .swatch-info {
+      padding: 8px;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      color: var(--text-dim);
+    }
+
+    .swatch-name {
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    code {
+      color: #c7f5ef;
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>No Man's Sky EXML Colour Visualizer</h1>
+    <p class="subtitle">Groups colours by each <strong>GcPlanetWeatherColourData</strong> block.</p>
+
+    <div class="controls">
+      <div class="row">
+        <input id="fileInput" type="file" accept=".xml,.exml,.txt" />
+        <button id="parseTextBtn" type="button">Parse Text</button>
+        <button id="exportPngBtn" type="button" disabled>Export PNG</button>
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+      <textarea id="xmlInput" placeholder="Paste EXML text here, or load a file..."></textarea>
+      <div id="status" class="status">Load an EXML file or paste XML text.</div>
+    </div>
+
+    <div id="summary" class="summary"></div>
+    <div id="groups" class="groups"></div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const parseTextBtn = document.getElementById("parseTextBtn");
+    const exportPngBtn = document.getElementById("exportPngBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const xmlInput = document.getElementById("xmlInput");
+    const statusEl = document.getElementById("status");
+    const summaryEl = document.getElementById("summary");
+    const groupsEl = document.getElementById("groups");
+    let lastParsedGroups = [];
+
+    function setStatus(message, kind) {
+      statusEl.textContent = message;
+      statusEl.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function clamp01(value) {
+      if (Number.isNaN(value)) return 0;
+      if (value < 0) return 0;
+      if (value > 1) return 1;
+      return value;
+    }
+
+    function toCssColor(r, g, b, a) {
+      const r255 = Math.round(clamp01(r) * 255);
+      const g255 = Math.round(clamp01(g) * 255);
+      const b255 = Math.round(clamp01(b) * 255);
+      const alpha = Number.isFinite(a) ? a : 1;
+      return `rgba(${r255}, ${g255}, ${b255}, ${alpha})`;
+    }
+
+    function toRgbText(r, g, b, a) {
+      const r255 = Math.round(clamp01(r) * 255);
+      const g255 = Math.round(clamp01(g) * 255);
+      const b255 = Math.round(clamp01(b) * 255);
+      const alpha = Number.isFinite(a) ? a : 1;
+      return `rgba(${r255}, ${g255}, ${b255}, ${alpha.toFixed(2)})`;
+    }
+
+    function getDirectProperties(node) {
+      return Array.from(node.children).filter(
+        (child) => child.tagName === "Property"
+      );
+    }
+
+    function readFloatProperty(parent, name, fallback) {
+      const child = getDirectProperties(parent).find(
+        (item) => item.getAttribute("name") === name
+      );
+      if (!child) return fallback;
+      const raw = child.getAttribute("value");
+      const parsed = Number.parseFloat(raw);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function readColourProperty(block, propName) {
+      const colorNode = getDirectProperties(block).find(
+        (item) => item.getAttribute("name") === propName
+      );
+      if (!colorNode) return null;
+
+      const r = readFloatProperty(colorNode, "R", 0);
+      const g = readFloatProperty(colorNode, "G", 0);
+      const b = readFloatProperty(colorNode, "B", 0);
+      const a = readFloatProperty(colorNode, "A", 1);
+      return { name: propName, r, g, b, a };
+    }
+
+    function readColourFromNode(node) {
+      const name = node.getAttribute("name") || "UnnamedColour";
+      const childNames = getDirectProperties(node).map((item) => item.getAttribute("name"));
+      if (!childNames.includes("R") || !childNames.includes("G") || !childNames.includes("B")) {
+        return null;
+      }
+
+      const r = readFloatProperty(node, "R", 0);
+      const g = readFloatProperty(node, "G", 0);
+      const b = readFloatProperty(node, "B", 0);
+      const a = readFloatProperty(node, "A", 1);
+      return { name, r, g, b, a };
+    }
+
+    function parseWeatherBlocks(xmlText) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, "application/xml");
+      const parseError = doc.querySelector("parsererror");
+      if (parseError) {
+        throw new Error("XML parse error. Check for malformed EXML text.");
+      }
+
+      const allSettingsNodes = Array.from(doc.querySelectorAll("Property[name='Settings'][value='GcPlanetWeatherColourData']"));
+
+      const groups = allSettingsNodes.map((block, index) => {
+        const weightNode = getDirectProperties(block).find(
+          (item) => item.getAttribute("name") === "SelectionWeighting"
+        );
+        const weight = weightNode ? weightNode.getAttribute("value") : "N/A";
+        const explicitIndex = block.getAttribute("_index");
+
+        const colours = getDirectProperties(block)
+          .map((item) => readColourFromNode(item))
+          .filter((item) => item !== null);
+
+        return {
+          displayIndex: explicitIndex ?? String(index),
+          weight,
+          colours,
+        };
+      });
+
+      return groups;
+    }
+
+    function render(groups) {
+      groupsEl.innerHTML = "";
+      summaryEl.innerHTML = "";
+
+      if (!groups.length) {
+        lastParsedGroups = [];
+        exportPngBtn.disabled = true;
+        setStatus("No GcPlanetWeatherColourData blocks found.", "warn");
+        return;
+      }
+
+      lastParsedGroups = groups;
+      exportPngBtn.disabled = false;
+
+      const totalSwatches = groups.reduce((sum, group) => sum + group.colours.length, 0);
+      const summaryItems = [
+        `Groups: ${groups.length}`,
+        `Swatches: ${totalSwatches}`,
+      ];
+
+      summaryItems.forEach((text) => {
+        const pill = document.createElement("div");
+        pill.className = "pill";
+        pill.textContent = text;
+        summaryEl.appendChild(pill);
+      });
+
+      groups.forEach((group) => {
+        const wrapper = document.createElement("section");
+        wrapper.className = "group";
+
+        const header = document.createElement("div");
+        header.className = "group-header";
+
+        const title = document.createElement("div");
+        title.className = "group-title";
+        title.textContent = `GcPlanetWeatherColourData #${group.displayIndex}`;
+
+        const meta = document.createElement("div");
+        meta.className = "pill";
+        meta.textContent = `SelectionWeighting: ${group.weight}`;
+
+        header.appendChild(title);
+        header.appendChild(meta);
+
+        const swatches = document.createElement("div");
+        swatches.className = "swatches";
+
+        group.colours.forEach((entry) => {
+          const swatch = document.createElement("article");
+          swatch.className = "swatch";
+
+          const colorBox = document.createElement("div");
+          colorBox.className = "swatch-color";
+          colorBox.style.background = toCssColor(entry.r, entry.g, entry.b, entry.a);
+
+          const info = document.createElement("div");
+          info.className = "swatch-info";
+
+          const name = document.createElement("div");
+          name.className = "swatch-name";
+          name.textContent = entry.name;
+
+          const rgba = document.createElement("div");
+          rgba.innerHTML = `<code>R:${entry.r.toFixed(6)} G:${entry.g.toFixed(6)} B:${entry.b.toFixed(6)} A:${entry.a.toFixed(6)}</code>`;
+
+          const css = document.createElement("div");
+          css.innerHTML = `<code>${toRgbText(entry.r, entry.g, entry.b, entry.a)}</code>`;
+
+          info.appendChild(name);
+          info.appendChild(rgba);
+          info.appendChild(css);
+
+          swatch.appendChild(colorBox);
+          swatch.appendChild(info);
+          swatches.appendChild(swatch);
+        });
+
+        wrapper.appendChild(header);
+        wrapper.appendChild(swatches);
+        groupsEl.appendChild(wrapper);
+      });
+
+      setStatus("Parsed successfully.", "ok");
+    }
+
+    function exportGroupsPng(groups) {
+      if (!groups || groups.length === 0) {
+        setStatus("Nothing to export. Parse a file first.", "warn");
+        return;
+      }
+
+      const pad = 16;
+      const headerH = 32;
+      const groupGap = 20;
+      const cols = 6;
+      const swatchW = 170;
+      const swatchH = 70;
+      const textPad = 8;
+
+      let totalHeight = pad;
+      for (const group of groups) {
+        const rows = Math.max(1, Math.ceil(group.colours.length / cols));
+        totalHeight += headerH + rows * swatchH + pad + groupGap;
+      }
+
+      const width = pad * 2 + cols * swatchW;
+      const height = Math.max(200, totalHeight);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+
+      ctx.fillStyle = "#0f141a";
+      ctx.fillRect(0, 0, width, height);
+
+      let y = pad;
+      for (const group of groups) {
+        ctx.fillStyle = "#ffd166";
+        ctx.font = "bold 16px Segoe UI";
+        ctx.fillText(`GcPlanetWeatherColourData #${group.displayIndex} (Weight: ${group.weight})`, pad, y + 22);
+        y += headerH;
+
+        group.colours.forEach((entry, index) => {
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const x = pad + col * swatchW;
+          const sy = y + row * swatchH;
+
+          ctx.fillStyle = "#15202b";
+          ctx.fillRect(x, sy, swatchW - 8, swatchH - 8);
+
+          ctx.fillStyle = toCssColor(entry.r, entry.g, entry.b, entry.a);
+          ctx.fillRect(x + 1, sy + 1, swatchW - 10, 34);
+
+          ctx.strokeStyle = "#304255";
+          ctx.strokeRect(x + 0.5, sy + 0.5, swatchW - 9, swatchH - 9);
+
+          ctx.fillStyle = "#e8f0f7";
+          ctx.font = "12px Segoe UI";
+          ctx.fillText(entry.name, x + textPad, sy + 50);
+        });
+
+        const rows = Math.max(1, Math.ceil(group.colours.length / cols));
+        y += rows * swatchH + groupGap;
+      }
+
+      const link = document.createElement("a");
+      link.download = "exml_colour_groups.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      setStatus("PNG exported.", "ok");
+    }
+
+    async function parseFromText() {
+      const text = xmlInput.value.trim();
+      if (!text) {
+        setStatus("No XML text to parse.", "warn");
+        return;
+      }
+
+      try {
+        const groups = parseWeatherBlocks(text);
+        render(groups);
+      } catch (error) {
+        setStatus(error.message, "warn");
+      }
+    }
+
+    fileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        xmlInput.value = text;
+        const groups = parseWeatherBlocks(text);
+        render(groups);
+      } catch (error) {
+        setStatus(`Failed to read file: ${error.message}`, "warn");
+      }
+    });
+
+    parseTextBtn.addEventListener("click", parseFromText);
+
+    clearBtn.addEventListener("click", () => {
+      xmlInput.value = "";
+      fileInput.value = "";
+      summaryEl.innerHTML = "";
+      groupsEl.innerHTML = "";
+      lastParsedGroups = [];
+      exportPngBtn.disabled = true;
+      setStatus("Cleared.");
+    });
+
+    exportPngBtn.addEventListener("click", () => exportGroupsPng(lastParsedGroups));
+  </script>
+</body>
+</html>

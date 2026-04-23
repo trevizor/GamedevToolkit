@@ -1760,8 +1760,8 @@
         const angleRad = normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
         const dir = { x: Math.sin(angleRad), y: Math.cos(angleRad) };
         const arrowFlip = (rampType === "tophalf") ? -1 : 1;
-        const start = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy + dir.y * ramp.sy * 0.25 * arrowFlip });
-        const end = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy - dir.y * ramp.sy * 0.25 * arrowFlip });
+        const start = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy - dir.y * ramp.sy * 0.25 * arrowFlip });
+        const end = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy + dir.y * ramp.sy * 0.25 * arrowFlip });
         const toLevel = Number.isFinite(Number(ramp.toLevel)) ? Number(ramp.toLevel) : currentLevelIndex;
         const fromLevel = Number.isFinite(Number(ramp.fromLevel)) ? Number(ramp.fromLevel) : currentLevelIndex;
         const rises = rampType === "half" || toLevel > fromLevel;
@@ -4788,7 +4788,8 @@
     }
 
     function buildCombinedWallsMeshData() {
-      const floorStride = getWallHeight() + getWallThickness() * 0.5;
+      // Keep level spacing consistent with runtime spawning and editor expectations.
+      const floorStride = getWallHeight();
       const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
       const slabThickness = Math.max(0.05, getWallThickness());
       const slabYOffset = slabThickness * SLAB_Y_OFFSET_FACTOR;
@@ -4852,7 +4853,7 @@
         pushFace(3, 4, 0);
       }
 
-      function appendRampWedge(cx, cz, sx, sz, startY, endY, rotationDeg, group) {
+      function appendRampWedge(cx, cz, sx, sz, startY, endY, rotationDeg, riseTowardPositiveDir, group) {
         if (!Number.isFinite(cx) || !Number.isFinite(cz) || !Number.isFinite(sx) || !Number.isFinite(sz)) {
           return;
         }
@@ -4860,7 +4861,8 @@
           return;
         }
 
-        const angle = (Number(rotationDeg) || 0) * Math.PI / 180;
+        // Canvas ramp direction uses clockwise rotation in grid space, so invert sign here.
+        const angle = -(Number(rotationDeg) || 0) * Math.PI / 180;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
         const hx = sx * 0.5;
@@ -4877,12 +4879,16 @@
           cz + p[0] * sin + p[1] * cos
         ]);
 
-        const v0 = [corners[0][0], startY, corners[0][1]]; // front-left low
-        const v1 = [corners[1][0], startY, corners[1][1]]; // front-right low
-        const v2 = [corners[2][0], endY, corners[2][1]];   // back-right high
-        const v3 = [corners[3][0], endY, corners[3][1]];   // back-left high
-        const v4 = [corners[2][0], startY, corners[2][1]]; // back-right low
-        const v5 = [corners[3][0], startY, corners[3][1]]; // back-left low
+        const highFront = !!riseTowardPositiveDir;
+        const frontY = highFront ? endY : startY;
+        const backY = highFront ? startY : endY;
+
+        const v0 = [corners[0][0], frontY, corners[0][1]]; // front-left
+        const v1 = [corners[1][0], frontY, corners[1][1]]; // front-right
+        const v2 = [corners[2][0], backY, corners[2][1]];  // back-right
+        const v3 = [corners[3][0], backY, corners[3][1]];  // back-left
+        const v4 = [corners[2][0], startY, corners[2][1]]; // back-right base
+        const v5 = [corners[3][0], startY, corners[3][1]]; // back-left base
 
         const offset = meshData.vertices.length;
         meshData.vertices.push(v0, v1, v2, v3, v4, v5);
@@ -4992,7 +4998,8 @@
             const endY = rampType === "half"
               ? halfTopY
               : toLevel * floorStride;
-            appendRampWedge(cx, cz, sx, sz, startY, endY, rotation, "floor");
+            const riseTowardPositiveDir = rampType === "tophalf";
+            appendRampWedge(cx, cz, sx, sz, startY, endY, rotation, riseTowardPositiveDir, "floor");
           }
         }
       }
