@@ -33,41 +33,47 @@
 
     body {
       margin: 0;
-      min-height: 100vh;
+      height: 100vh;
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       color: var(--ink);
       background: radial-gradient(circle at top left, #ffffff 0%, var(--bg) 65%);
-      display: grid;
-      place-items: center;
-      padding: 24px;
+      display: flex;
+      padding: 10px;
+      overflow: hidden;
     }
 
     .card {
       width: 95vw;
+      height: calc(100vh - 20px);
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(15, 35, 65, 0.08);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 26px rgba(15, 35, 65, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
     .toolbar-top,
     .toolbar-tools {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+      flex-wrap: nowrap;
+      gap: 8px;
       align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
 
     .toolbar-top {
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
 
     .props-toggle {
       background: #eaf2ff;
       color: #21406e;
-      padding: 10px 12px;
-      font-size: 0.82rem;
+      padding: 8px 10px;
+      font-size: 0.7rem;
       letter-spacing: 0.03em;
       text-transform: uppercase;
     }
@@ -75,7 +81,7 @@
     .export-props-panel {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
@@ -84,73 +90,73 @@
     }
 
     .toolbar-tools {
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     .tool-group {
       display: inline-flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 7px;
       align-items: center;
     }
 
     .tool-group + .tool-group {
       border-left: 1px solid var(--border);
-      padding-left: 10px;
-      margin-left: 2px;
+      padding-left: 8px;
+      margin-left: 1px;
     }
 
     .meta {
       color: var(--muted);
-      font-size: 0.9rem;
-      margin-left: 8px;
+      font-size: 0.76rem;
+      margin-left: 7px;
     }
 
     .field {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       color: #32455f;
-      font-size: 0.9rem;
+      font-size: 0.76rem;
       background: #f2f6fd;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 6px 8px;
+      border-radius: 7px;
+      padding: 5px 7px;
     }
 
     .field input,
     .field select {
       border: 1px solid #c7d5ea;
-      border-radius: 6px;
-      padding: 4px 6px;
+      border-radius: 5px;
+      padding: 3px 5px;
       background: #fff;
       color: #1f2d3d;
-      font-size: 0.9rem;
-      width: 86px;
+      font-size: 0.76rem;
+      width: 73px;
     }
 
     .field input.plan-title {
-      width: 220px;
+      width: 187px;
     }
 
     h1 {
-      margin: 0 0 10px;
-      font-size: 1.5rem;
+      margin: 0 0 8px;
+      font-size: 1.28rem;
     }
 
     p {
-      margin: 0 0 18px;
+      margin: 0 0 15px;
       color: var(--muted);
       line-height: 1.45;
     }
 
     button {
       border: 0;
-      border-radius: 10px;
+      border-radius: 8px;
       background: var(--accent);
       color: var(--accent-ink);
-      padding: 12px 16px;
-      font-size: 0.96rem;
+      padding: 10px 14px;
+      font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
       transition: transform 120ms ease, filter 120ms ease;
@@ -181,43 +187,62 @@
     }
 
     #status {
-      margin-top: 14px;
+      margin-top: 0;
       min-height: 1.4em;
       color: var(--muted);
-      font-size: 0.95rem;
+      font-size: 0.81rem;
+    }
+
+    .bottom-bar {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+      min-width: 0;
     }
 
     .canvas-wrap {
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
       background: #fdfefe;
+      flex: 1;
+      min-height: 0;
     }
 
     .editor-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 240px;
-      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) 204px;
+      gap: 10px;
       align-items: start;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .editor-main {
       min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
 
     .floors-panel {
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       background: #f8fbff;
-      padding: 10px;
+      padding: 8px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      max-height: 700px;
+      gap: 7px;
+      max-height: 100%;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .floors-header {
-      font-size: 0.82rem;
+      font-size: 0.7rem;
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -226,31 +251,76 @@
 
     .floors-actions {
       display: flex;
-      gap: 6px;
+      gap: 5px;
       flex-wrap: wrap;
     }
 
     .floors-actions button {
-      padding: 8px 10px;
-      font-size: 0.82rem;
-      border-radius: 8px;
+      padding: 7px 8px;
+      font-size: 0.7rem;
+      border-radius: 7px;
     }
 
     .floors-list {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
       overflow: auto;
-      padding-right: 2px;
+      padding-right: 1px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .legend-panel {
+      border: 1px solid #d7e3f5;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .legend-section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #33507a;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      color: #264361;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid rgba(15, 23, 34, 0.2);
+      flex: 0 0 auto;
+    }
+
+    .legend-swatch.line {
+      width: 16px;
+      height: 0;
+      border-radius: 0;
+      border: 0;
+      border-top: 3px solid currentColor;
     }
 
     .floor-item {
       border: 1px solid #cfdcf0;
-      border-radius: 8px;
+      border-radius: 7px;
       background: #ffffff;
       color: #27456f;
-      padding: 8px 10px;
-      font-size: 0.88rem;
+      padding: 7px 8px;
+      font-size: 0.75rem;
       text-align: left;
       cursor: pointer;
     }
@@ -273,33 +343,34 @@
     }
 
     .zoom-bar {
-      margin-top: 10px;
+      margin-top: 0;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 8px;
       background: #f7faff;
-      padding: 8px;
+      padding: 7px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       flex-wrap: wrap;
+      flex-shrink: 0;
     }
 
     .zoom-bar .label {
       color: #22406d;
-      font-size: 0.9rem;
+      font-size: 0.76rem;
       font-weight: 600;
     }
 
     .zoom-bar button {
-      padding: 8px 12px;
-      font-size: 0.9rem;
-      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.76rem;
+      border-radius: 7px;
     }
 
     .zoom-readout {
       margin-left: auto;
       color: #32455f;
-      font-size: 0.9rem;
+      font-size: 0.76rem;
       font-weight: 600;
     }
 
@@ -311,6 +382,12 @@
       background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
     }
 
+    #planCanvas {
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
     .preview3d-overlay {
       position: fixed;
       inset: 0;
@@ -319,7 +396,7 @@
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 20px;
+      padding: 17px;
     }
 
     .preview3d-overlay.hidden {
@@ -331,34 +408,34 @@
       height: min(760px, 90vh);
       background: #ffffff;
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
       display: grid;
       grid-template-rows: auto 1fr;
-      box-shadow: 0 18px 40px rgba(15, 35, 65, 0.24);
+      box-shadow: 0 15px 34px rgba(15, 35, 65, 0.24);
     }
 
     .preview3d-topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      padding: 10px 12px;
+      gap: 10px;
+      padding: 8px 10px;
       border-bottom: 1px solid var(--border);
       background: #f7fbff;
     }
 
     .preview3d-title {
-      font-size: 0.9rem;
+      font-size: 0.76rem;
       font-weight: 700;
       color: #21406e;
       letter-spacing: 0.02em;
     }
 
     .preview3d-hint {
-      font-size: 0.82rem;
+      font-size: 0.7rem;
       color: #4a607d;
-      margin-left: 8px;
+      margin-left: 7px;
       font-weight: 500;
     }
 
@@ -385,7 +462,7 @@
       align-items: center;
       justify-content: center;
       z-index: 1001;
-      padding: 20px;
+      padding: 17px;
     }
 
     .help-overlay.hidden {
@@ -398,25 +475,25 @@
       overflow: auto;
       background: #ffffff;
       border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 18px 40px rgba(15, 35, 65, 0.24);
-      padding: 14px;
+      border-radius: 10px;
+      box-shadow: 0 15px 34px rgba(15, 35, 65, 0.24);
+      padding: 12px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .help-topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 10px;
+      padding-bottom: 8px;
     }
 
     .help-title {
-      font-size: 1rem;
+      font-size: 0.85rem;
       font-weight: 700;
       color: #21406e;
       letter-spacing: 0.02em;
@@ -424,13 +501,13 @@
 
     .help-content {
       color: #284363;
-      font-size: 0.92rem;
+      font-size: 0.78rem;
       line-height: 1.5;
     }
 
     .help-content h3 {
-      margin: 12px 0 6px;
-      font-size: 0.92rem;
+      margin: 10px 0 5px;
+      font-size: 0.78rem;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: #2f537f;
@@ -439,7 +516,7 @@
     .help-content p,
     .help-content ul,
     .help-content ol {
-      margin: 0 0 8px;
+      margin: 0 0 7px;
     }
 
     .help-content a {
@@ -528,15 +605,6 @@
         <div class="canvas-wrap">
           <canvas id="planCanvas" width="920" height="560"></canvas>
         </div>
-
-        <div class="zoom-bar" aria-label="Canvas zoom controls">
-          <span class="label">Canvas Zoom</span>
-          <button id="zoomOutBtn" type="button" class="secondary">-</button>
-          <button id="zoomInBtn" type="button" class="secondary">+</button>
-          <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
-          <span id="zoomReadout" class="zoom-readout">100%</span>
-          <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
-        </div>
       </div>
 
       <aside class="floors-panel" aria-label="Level controls">
@@ -554,10 +622,39 @@
           <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
         </div>
         <div id="floorsList" class="floors-list"></div>
+        <div class="floors-header">Legend</div>
+        <div class="legend-panel" aria-label="Canvas color legend">
+          <div class="legend-section-title">Lines</div>
+          <div class="legend-row" style="color:#0f1722"><span class="legend-swatch line" aria-hidden="true"></span><span>Wall</span></div>
+          <div class="legend-row" style="color:#0e7490"><span class="legend-swatch line" aria-hidden="true"></span><span>Half Wall</span></div>
+          <div class="legend-row" style="color:#d97706"><span class="legend-swatch line" aria-hidden="true"></span><span>Door</span></div>
+          <div class="legend-row" style="color:#0891b2"><span class="legend-swatch line" aria-hidden="true"></span><span>Window</span></div>
+
+          <div class="legend-section-title">Slabs</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(16,185,129,0.18); border-color:#059669" aria-hidden="true"></span><span>Floor Box</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(59,130,246,0.18); border-color:#2563eb" aria-hidden="true"></span><span>Ceiling Box</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(14,116,144,0.18); border-color:#0e7490" aria-hidden="true"></span><span>Half Wall Box</span></div>
+
+          <div class="legend-section-title">Ramps</div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(245,158,11,0.20); border-color:#b45309" aria-hidden="true"></span><span>Ramp</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(251,113,133,0.20); border-color:#9f1239" aria-hidden="true"></span><span>Half Ramp</span></div>
+          <div class="legend-row"><span class="legend-swatch" style="background:rgba(168,85,247,0.20); border-color:#6d28d9" aria-hidden="true"></span><span>Top Half Ramp</span></div>
+        </div>
       </aside>
     </div>
 
-    <div id="status" aria-live="polite"></div>
+    <div class="bottom-bar">
+      <div class="zoom-bar" aria-label="Canvas zoom controls">
+        <span class="label">Canvas Zoom</span>
+        <button id="zoomOutBtn" type="button" class="secondary">-</button>
+        <button id="zoomInBtn" type="button" class="secondary">+</button>
+        <button id="zoomResetBtn" type="button" class="secondary">Reset</button>
+        <button id="centerOriginBtn" type="button" class="secondary">Center Origin</button>
+        <span id="zoomReadout" class="zoom-readout">100%</span>
+        <span id="meta" class="meta">Grid: 0.25 | Wall Height: 2.5 | Thickness: 0.125</span>
+      </div>
+      <div id="status" aria-live="polite"></div>
+    </div>
     <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
   </main>
 
@@ -665,6 +762,7 @@
     const zoomOutButton = document.getElementById("zoomOutBtn");
     const zoomInButton = document.getElementById("zoomInBtn");
     const zoomResetButton = document.getElementById("zoomResetBtn");
+    const centerOriginButton = document.getElementById("centerOriginBtn");
     const floorAddAboveButton = document.getElementById("floorAddAboveBtn");
     const floorMoveUpButton = document.getElementById("floorMoveUpBtn");
     const floorMoveDownButton = document.getElementById("floorMoveDownBtn");
@@ -687,6 +785,7 @@
     const meta = document.getElementById("meta");
     const canvas = document.getElementById("planCanvas");
     const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
     const preview3dOverlay = document.getElementById("preview3dOverlay");
     const preview3dCloseButton = document.getElementById("preview3dCloseBtn");
     const preview3dCanvas = document.getElementById("preview3dCanvas");
@@ -718,6 +817,9 @@
     let viewOffsetX = 0;
     let viewOffsetY = 0;
     let activeTool = "wall";
+    const selectedSegmentsByLevel = new Map();
+    const selectedSlabsByLevel = new Map();
+    const selectedRampsByLevel = new Map();
     let selectedSegmentIndices = new Set();
     let selectedSlabBoxIndices = new Set();
     let selectedRampIndices = new Set();
@@ -739,18 +841,63 @@
     let preview3dAnimationId = null;
     let preview3dResizeHandler = null;
     let preview3dViewState = null;
+    let pendingDuplicate = null;
 
     function getCurrentLevel() {
       return floors[currentLevelIndex];
     }
 
-    function setCurrentLevelIndex(nextIndex) {
+    function getSelectionSetForLevel(map, levelIndex) {
+      if (!map.has(levelIndex)) {
+        map.set(levelIndex, new Set());
+      }
+      return map.get(levelIndex);
+    }
+
+    function bindSelectionSetsToCurrentLevel() {
+      selectedSegmentIndices = getSelectionSetForLevel(selectedSegmentsByLevel, currentLevelIndex);
+      selectedSlabBoxIndices = getSelectionSetForLevel(selectedSlabsByLevel, currentLevelIndex);
+      selectedRampIndices = getSelectionSetForLevel(selectedRampsByLevel, currentLevelIndex);
+    }
+
+    function clearAllSelections() {
+      selectedSegmentsByLevel.clear();
+      selectedSlabsByLevel.clear();
+      selectedRampsByLevel.clear();
+      bindSelectionSetsToCurrentLevel();
+    }
+
+    function hasAnySelectionAcrossLevels() {
+      for (const set of selectedSegmentsByLevel.values()) {
+        if (set.size > 0) {
+          return true;
+        }
+      }
+      for (const set of selectedSlabsByLevel.values()) {
+        if (set.size > 0) {
+          return true;
+        }
+      }
+      for (const set of selectedRampsByLevel.values()) {
+        if (set.size > 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    bindSelectionSetsToCurrentLevel();
+
+    function setCurrentLevelIndex(nextIndex, preserveSelection = true) {
       const clamped = Math.max(0, Math.min(floors.length - 1, nextIndex));
       currentLevelIndex = clamped;
       segments = floors[currentLevelIndex].segments;
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      pendingDuplicate = null;
+      if (!preserveSelection) {
+        clearAllSelections();
+      } else {
+        bindSelectionSetsToCurrentLevel();
+      }
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -798,6 +945,7 @@
       const newFloor = createLevel("", []);
       floors.splice(insertAt, 0, newFloor);
       rebuildLevelNamesIfDefault();
+      clearAllSelections();
       setCurrentLevelIndex(insertAt);
       status.textContent = `${newFloor.name} created.`;
     }
@@ -809,6 +957,7 @@
       const removedName = floors[currentLevelIndex].name;
       floors.splice(currentLevelIndex, 1);
       rebuildLevelNamesIfDefault();
+      clearAllSelections();
       setCurrentLevelIndex(Math.min(currentLevelIndex, floors.length - 1));
       status.textContent = `${removedName} removed.`;
     }
@@ -824,6 +973,7 @@
       floors.splice(targetIndex, 0, floor);
 
       rebuildLevelNamesIfDefault();
+      clearAllSelections();
       setCurrentLevelIndex(targetIndex);
       status.textContent = `${floor.name} moved ${direction < 0 ? "up" : "down"}.`;
     }
@@ -989,10 +1139,14 @@
     function drawGrid() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 1;
+      const hideMinorGrid = gridPx < DEFAULT_GRID_PX * 0.35;
 
       const startX = Math.floor((0 - viewOffsetX) / gridPx);
       const endX = Math.ceil((canvas.width - viewOffsetX) / gridPx);
       for (let gx = startX; gx <= endX; gx += 1) {
+        if (hideMinorGrid && gx % 4 !== 0) {
+          continue;
+        }
         const x = gx * gridPx + viewOffsetX;
         ctx.strokeStyle = gx % 4 === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
@@ -1004,6 +1158,9 @@
       const startY = Math.floor((0 - viewOffsetY) / gridPx);
       const endY = Math.ceil((canvas.height - viewOffsetY) / gridPx);
       for (let gy = startY; gy <= endY; gy += 1) {
+        if (hideMinorGrid && gy % 4 !== 0) {
+          continue;
+        }
         const y = gy * gridPx + viewOffsetY;
         ctx.strokeStyle = gy % 4 === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
@@ -1015,18 +1172,30 @@
       const originCanvas = gridToCanvas({ x: 0, y: 0 });
       const cx = originCanvas.x;
       const cy = originCanvas.y;
-      const markerHalf = 10;
+      const markerHalf = 16;
       const minorMarkerHalf = 5;
       const markerStepGrid = Math.max(1, Math.round(5 / GRID_SIZE_UNITS));
+      const originRingRadius = 6;
 
       ctx.save();
-      ctx.strokeStyle = "#3b82f6";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.moveTo(cx - markerHalf, cy + 0.5);
       ctx.lineTo(cx + markerHalf, cy + 0.5);
       ctx.moveTo(cx + 0.5, cy - markerHalf);
       ctx.lineTo(cx + 0.5, cy + markerHalf);
+      ctx.stroke();
+
+      ctx.fillStyle = "#1d4ed8";
+      ctx.beginPath();
+      ctx.arc(cx, cy, originRingRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, originRingRadius - 2, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.strokeStyle = "#60a5fa";
@@ -1297,25 +1466,70 @@
     }
 
     function buildMixedSelectionOriginals() {
-      const slabBoxes = getCurrentLevelSlabBoxes();
-      const ramps = getCurrentLevelRamps();
-      return {
-        segments: Array.from(selectedSegmentIndices).map(idx => ({
-          index: idx,
-          a: clonePoint(segments[idx].a),
-          b: clonePoint(segments[idx].b)
-        })),
-        slabs: Array.from(selectedSlabBoxIndices).map(idx => ({
-          index: idx,
-          cx: slabBoxes[idx].cx,
-          cy: slabBoxes[idx].cy
-        })),
-        ramps: Array.from(selectedRampIndices).map(idx => ({
-          index: idx,
-          cx: ramps[idx].cx,
-          cy: ramps[idx].cy
-        }))
+      const originals = {
+        segmentsByLevel: [],
+        slabsByLevel: [],
+        rampsByLevel: []
       };
+
+      for (let levelIndex = 0; levelIndex < floors.length; levelIndex += 1) {
+        const level = floors[levelIndex];
+        if (!level) {
+          continue;
+        }
+
+        const levelSegSelection = getSelectionSetForLevel(selectedSegmentsByLevel, levelIndex);
+        const levelSegOriginals = Array.from(levelSegSelection).map(idx => {
+          const seg = level.segments[idx];
+          if (!seg) {
+            return null;
+          }
+          return {
+            index: idx,
+            a: clonePoint(seg.a),
+            b: clonePoint(seg.b)
+          };
+        }).filter(Boolean);
+        if (levelSegOriginals.length > 0) {
+          originals.segmentsByLevel.push({ levelIndex, items: levelSegOriginals });
+        }
+
+        const slabBoxes = Array.isArray(level.slabBoxes) ? level.slabBoxes : [];
+        const levelSlabSelection = getSelectionSetForLevel(selectedSlabsByLevel, levelIndex);
+        const levelSlabOriginals = Array.from(levelSlabSelection).map(idx => {
+          const box = slabBoxes[idx];
+          if (!box) {
+            return null;
+          }
+          return {
+            index: idx,
+            cx: box.cx,
+            cy: box.cy
+          };
+        }).filter(Boolean);
+        if (levelSlabOriginals.length > 0) {
+          originals.slabsByLevel.push({ levelIndex, items: levelSlabOriginals });
+        }
+
+        const ramps = Array.isArray(level.ramps) ? level.ramps : [];
+        const levelRampSelection = getSelectionSetForLevel(selectedRampsByLevel, levelIndex);
+        const levelRampOriginals = Array.from(levelRampSelection).map(idx => {
+          const ramp = ramps[idx];
+          if (!ramp) {
+            return null;
+          }
+          return {
+            index: idx,
+            cx: ramp.cx,
+            cy: ramp.cy
+          };
+        }).filter(Boolean);
+        if (levelRampOriginals.length > 0) {
+          originals.rampsByLevel.push({ levelIndex, items: levelRampOriginals });
+        }
+      }
+
+      return originals;
     }
 
     function getSingleSelectedSlabHandleHit(pointerWorld) {
@@ -1545,7 +1759,7 @@
 
         const angleRad = normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
         const dir = { x: Math.sin(angleRad), y: Math.cos(angleRad) };
-        const arrowFlip = rampType === "half" ? -1 : 1;
+        const arrowFlip = (rampType === "tophalf") ? -1 : 1;
         const start = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy + dir.y * ramp.sy * 0.25 * arrowFlip });
         const end = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy - dir.y * ramp.sy * 0.25 * arrowFlip });
         const toLevel = Number.isFinite(Number(ramp.toLevel)) ? Number(ramp.toLevel) : currentLevelIndex;
@@ -1706,6 +1920,26 @@
     }
 
     function drawPreview() {
+      if (pendingDuplicate && pointerGrid) {
+        const previewPlacement = buildDuplicatePlacement(pendingDuplicate, pointerGrid);
+        if (previewPlacement) {
+          const previewSegments = previewPlacement.segmentsByLevel.find(group => group.levelIndex === currentLevelIndex);
+          if (previewSegments && previewSegments.items.length > 0) {
+            drawFloorSegments(previewSegments.items, { alpha: 0.55, tintColor: "#6366f1", isCurrent: false });
+          }
+
+          const previewSlabs = previewPlacement.slabsByLevel.find(group => group.levelIndex === currentLevelIndex);
+          if (previewSlabs && previewSlabs.items.length > 0) {
+            drawSlabBoxes(previewSlabs.items, { alpha: 0.5, isCurrent: false });
+          }
+
+          const previewRamps = previewPlacement.rampsByLevel.find(group => group.levelIndex === currentLevelIndex);
+          if (previewRamps && previewRamps.items.length > 0) {
+            drawRamps(previewRamps.items, { alpha: 0.5, isCurrent: false });
+          }
+        }
+      }
+
       if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
@@ -1948,11 +2182,23 @@
     }
 
     function redraw() {
+      resizePlanCanvasIfNeeded();
+      ctx.imageSmoothingEnabled = false;
       drawGrid();
       drawSegments();
       drawPreview();
       updateMeta();
       updateZoomReadout();
+    }
+
+    function resizePlanCanvasIfNeeded() {
+      const rect = canvas.getBoundingClientRect();
+      const nextWidth = Math.max(1, Math.round(rect.width));
+      const nextHeight = Math.max(1, Math.round(rect.height));
+      if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+        canvas.width = nextWidth;
+        canvas.height = nextHeight;
+      }
     }
 
     function updateMeta() {
@@ -1991,6 +2237,14 @@
       redraw();
     }
 
+    function centerCanvasOnOrigin() {
+      resizePlanCanvasIfNeeded();
+      viewOffsetX = canvas.width * 0.5;
+      viewOffsetY = canvas.height * 0.5;
+      queueLocalAutosave();
+      redraw();
+    }
+
     function setCanvasZoomAtPoint(nextGridPx, anchorCanvasX, anchorCanvasY) {
       const oldGridPx = gridPx;
       const clamped = Math.max(MIN_GRID_PX, Math.min(MAX_GRID_PX, nextGridPx));
@@ -2010,6 +2264,240 @@
 
     function clonePoint(point) {
       return { x: point.x, y: point.y };
+    }
+
+    function buildDuplicateSourceSelection() {
+      const copied = {
+        segmentsByLevel: [],
+        slabsByLevel: [],
+        rampsByLevel: []
+      };
+      const anchorPoints = [];
+
+      for (let levelIndex = 0; levelIndex < floors.length; levelIndex += 1) {
+        const level = floors[levelIndex];
+        if (!level) {
+          continue;
+        }
+
+        const levelSegments = Array.isArray(level.segments) ? level.segments : [];
+        const levelSegmentSelection = getSelectionSetForLevel(selectedSegmentsByLevel, levelIndex);
+        const segmentIndices = Array.from(levelSegmentSelection).sort((a, b) => a - b);
+        const copiedSegments = [];
+        for (let i = 0; i < segmentIndices.length; i += 1) {
+          const seg = levelSegments[segmentIndices[i]];
+          if (!seg) {
+            continue;
+          }
+          copiedSegments.push({
+            a: clonePoint(seg.a),
+            b: clonePoint(seg.b),
+            type: seg.type || "wall"
+          });
+          anchorPoints.push({
+            x: (seg.a.x + seg.b.x) * 0.5,
+            y: (seg.a.y + seg.b.y) * 0.5
+          });
+        }
+        if (copiedSegments.length > 0) {
+          copied.segmentsByLevel.push({ levelIndex, items: copiedSegments });
+        }
+
+        const slabBoxes = Array.isArray(level.slabBoxes) ? level.slabBoxes : [];
+        const levelSlabSelection = getSelectionSetForLevel(selectedSlabsByLevel, levelIndex);
+        const slabIndices = Array.from(levelSlabSelection).sort((a, b) => a - b);
+        const copiedSlabs = [];
+        for (let i = 0; i < slabIndices.length; i += 1) {
+          const box = slabBoxes[slabIndices[i]];
+          if (!box) {
+            continue;
+          }
+          copiedSlabs.push({
+            type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
+            cx: Number(box.cx),
+            cy: Number(box.cy),
+            sx: Number(box.sx),
+            sy: Number(box.sy),
+            rotation: Number(box.rotation) || 0
+          });
+          anchorPoints.push({ x: Number(box.cx), y: Number(box.cy) });
+        }
+        if (copiedSlabs.length > 0) {
+          copied.slabsByLevel.push({ levelIndex, items: copiedSlabs });
+        }
+
+        const ramps = Array.isArray(level.ramps) ? level.ramps : [];
+        const levelRampSelection = getSelectionSetForLevel(selectedRampsByLevel, levelIndex);
+        const rampIndices = Array.from(levelRampSelection).sort((a, b) => a - b);
+        const copiedRamps = [];
+        for (let i = 0; i < rampIndices.length; i += 1) {
+          const ramp = ramps[rampIndices[i]];
+          if (!ramp) {
+            continue;
+          }
+          const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
+          copiedRamps.push({
+            type: rampType,
+            cx: Number(ramp.cx),
+            cy: Number(ramp.cy),
+            sx: Number(ramp.sx),
+            sy: Number(ramp.sy),
+            rotation: Number(ramp.rotation) || 0,
+            fromLevel: Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : levelIndex,
+            toLevel: Number.isInteger(ramp.toLevel) ? ramp.toLevel : (rampType === "half" ? levelIndex : levelIndex + 1)
+          });
+          anchorPoints.push({ x: Number(ramp.cx), y: Number(ramp.cy) });
+        }
+        if (copiedRamps.length > 0) {
+          copied.rampsByLevel.push({ levelIndex, items: copiedRamps });
+        }
+      }
+
+      const hasAnyItems = copied.segmentsByLevel.length > 0 || copied.slabsByLevel.length > 0 || copied.rampsByLevel.length > 0;
+      if (!hasAnyItems) {
+        return null;
+      }
+
+      let sumX = 0;
+      let sumY = 0;
+      for (let i = 0; i < anchorPoints.length; i += 1) {
+        sumX += anchorPoints[i].x;
+        sumY += anchorPoints[i].y;
+      }
+
+      return {
+        anchor: {
+          x: Math.round(sumX / Math.max(1, anchorPoints.length)),
+          y: Math.round(sumY / Math.max(1, anchorPoints.length))
+        },
+        segmentsByLevel: copied.segmentsByLevel,
+        slabsByLevel: copied.slabsByLevel,
+        rampsByLevel: copied.rampsByLevel
+      };
+    }
+
+    function buildDuplicatePlacement(duplicate, targetGrid) {
+      if (!duplicate || !targetGrid) {
+        return null;
+      }
+
+      const dx = targetGrid.x - duplicate.anchor.x;
+      const dy = targetGrid.y - duplicate.anchor.y;
+
+      return {
+        segmentsByLevel: duplicate.segmentsByLevel.map(group => ({
+          levelIndex: group.levelIndex,
+          items: group.items.map(seg => ({
+            a: { x: seg.a.x + dx, y: seg.a.y + dy },
+            b: { x: seg.b.x + dx, y: seg.b.y + dy },
+            type: seg.type || "wall"
+          }))
+        })),
+        slabsByLevel: duplicate.slabsByLevel.map(group => ({
+          levelIndex: group.levelIndex,
+          items: group.items.map(box => ({
+            type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
+            cx: box.cx + dx,
+            cy: box.cy + dy,
+            sx: box.sx,
+            sy: box.sy,
+            rotation: box.rotation
+          }))
+        })),
+        rampsByLevel: duplicate.rampsByLevel.map(group => ({
+          levelIndex: group.levelIndex,
+          items: group.items.map(ramp => ({
+            type: ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full",
+            cx: ramp.cx + dx,
+            cy: ramp.cy + dy,
+            sx: ramp.sx,
+            sy: ramp.sy,
+            rotation: ramp.rotation,
+            fromLevel: ramp.fromLevel,
+            toLevel: ramp.toLevel
+          }))
+        }))
+      };
+    }
+
+    function beginDuplicatePreview() {
+      const duplicate = buildDuplicateSourceSelection();
+      if (!duplicate) {
+        return false;
+      }
+      pendingDuplicate = duplicate;
+      return true;
+    }
+
+    function commitPendingDuplicateAt(targetGrid) {
+      if (!pendingDuplicate || !targetGrid) {
+        return false;
+      }
+
+      const placed = buildDuplicatePlacement(pendingDuplicate, targetGrid);
+      if (!placed) {
+        return false;
+      }
+
+      recordUndoSnapshot();
+      clearAllSelections();
+
+      let duplicatedCount = 0;
+
+      for (let i = 0; i < placed.segmentsByLevel.length; i += 1) {
+        const group = placed.segmentsByLevel[i];
+        const level = floors[group.levelIndex];
+        if (!level || !Array.isArray(level.segments)) {
+          continue;
+        }
+        const start = level.segments.length;
+        for (let j = 0; j < group.items.length; j += 1) {
+          level.segments.push(group.items[j]);
+          getSelectionSetForLevel(selectedSegmentsByLevel, group.levelIndex).add(start + j);
+          duplicatedCount += 1;
+        }
+      }
+
+      for (let i = 0; i < placed.slabsByLevel.length; i += 1) {
+        const group = placed.slabsByLevel[i];
+        const level = floors[group.levelIndex];
+        if (!level) {
+          continue;
+        }
+        if (!Array.isArray(level.slabBoxes)) {
+          level.slabBoxes = [];
+        }
+        const start = level.slabBoxes.length;
+        for (let j = 0; j < group.items.length; j += 1) {
+          level.slabBoxes.push(group.items[j]);
+          getSelectionSetForLevel(selectedSlabsByLevel, group.levelIndex).add(start + j);
+          duplicatedCount += 1;
+        }
+      }
+
+      for (let i = 0; i < placed.rampsByLevel.length; i += 1) {
+        const group = placed.rampsByLevel[i];
+        const level = floors[group.levelIndex];
+        if (!level) {
+          continue;
+        }
+        if (!Array.isArray(level.ramps)) {
+          level.ramps = [];
+        }
+        const start = level.ramps.length;
+        for (let j = 0; j < group.items.length; j += 1) {
+          level.ramps.push(group.items[j]);
+          getSelectionSetForLevel(selectedRampsByLevel, group.levelIndex).add(start + j);
+          duplicatedCount += 1;
+        }
+      }
+
+      bindSelectionSetsToCurrentLevel();
+      pendingDuplicate = null;
+      queueLocalAutosave();
+      status.textContent = `Duplicated ${duplicatedCount} item(s).`;
+      redraw();
+      return true;
     }
 
     function cloneProjectData(data) {
@@ -2146,47 +2634,67 @@
       }
 
       if (drag.mode === "move-mixed-selection" && drag.originals) {
-        const slabBoxes = getCurrentLevelSlabBoxes();
-        const ramps = getCurrentLevelRamps();
-
-        if (Array.isArray(drag.originals.segments)) {
-          for (let i = 0; i < drag.originals.segments.length; i += 1) {
-            const original = drag.originals.segments[i];
-            const seg = segments[original.index];
-            if (!seg) {
+        if (Array.isArray(drag.originals.segmentsByLevel)) {
+          for (let i = 0; i < drag.originals.segmentsByLevel.length; i += 1) {
+            const levelData = drag.originals.segmentsByLevel[i];
+            const level = floors[levelData.levelIndex];
+            if (!level || !Array.isArray(levelData.items)) {
               continue;
             }
-            if (Math.hypot(seg.a.x - original.a.x, seg.a.y - original.a.y) > 1e-9) {
-              return true;
-            }
-            if (Math.hypot(seg.b.x - original.b.x, seg.b.y - original.b.y) > 1e-9) {
-              return true;
+            for (let j = 0; j < levelData.items.length; j += 1) {
+              const original = levelData.items[j];
+              const seg = level.segments[original.index];
+              if (!seg) {
+                continue;
+              }
+              if (Math.hypot(seg.a.x - original.a.x, seg.a.y - original.a.y) > 1e-9) {
+                return true;
+              }
+              if (Math.hypot(seg.b.x - original.b.x, seg.b.y - original.b.y) > 1e-9) {
+                return true;
+              }
             }
           }
         }
 
-        if (Array.isArray(drag.originals.slabs)) {
-          for (let i = 0; i < drag.originals.slabs.length; i += 1) {
-            const original = drag.originals.slabs[i];
-            const box = slabBoxes[original.index];
-            if (!box) {
+        if (Array.isArray(drag.originals.slabsByLevel)) {
+          for (let i = 0; i < drag.originals.slabsByLevel.length; i += 1) {
+            const levelData = drag.originals.slabsByLevel[i];
+            const level = floors[levelData.levelIndex];
+            const slabBoxes = level && Array.isArray(level.slabBoxes) ? level.slabBoxes : null;
+            if (!slabBoxes || !Array.isArray(levelData.items)) {
               continue;
             }
-            if (Math.hypot(box.cx - original.cx, box.cy - original.cy) > 1e-9) {
-              return true;
+            for (let j = 0; j < levelData.items.length; j += 1) {
+              const original = levelData.items[j];
+              const box = slabBoxes[original.index];
+              if (!box) {
+                continue;
+              }
+              if (Math.hypot(box.cx - original.cx, box.cy - original.cy) > 1e-9) {
+                return true;
+              }
             }
           }
         }
 
-        if (Array.isArray(drag.originals.ramps)) {
-          for (let i = 0; i < drag.originals.ramps.length; i += 1) {
-            const original = drag.originals.ramps[i];
-            const ramp = ramps[original.index];
-            if (!ramp) {
+        if (Array.isArray(drag.originals.rampsByLevel)) {
+          for (let i = 0; i < drag.originals.rampsByLevel.length; i += 1) {
+            const levelData = drag.originals.rampsByLevel[i];
+            const level = floors[levelData.levelIndex];
+            const ramps = level && Array.isArray(level.ramps) ? level.ramps : null;
+            if (!ramps || !Array.isArray(levelData.items)) {
               continue;
             }
-            if (Math.hypot(ramp.cx - original.cx, ramp.cy - original.cy) > 1e-9) {
-              return true;
+            for (let j = 0; j < levelData.items.length; j += 1) {
+              const original = levelData.items[j];
+              const ramp = ramps[original.index];
+              if (!ramp) {
+                continue;
+              }
+              if (Math.hypot(ramp.cx - original.cx, ramp.cy - original.cy) > 1e-9) {
+                return true;
+              }
             }
           }
         }
@@ -2215,9 +2723,7 @@
       isErasingDrag = false;
       ellipseForceCircle = false;
       startGrid = null;
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -2272,38 +2778,78 @@
 
     function deleteSelectedSegments() {
       if (selectedSegmentIndices.size === 0 && selectedSlabBoxIndices.size === 0 && selectedRampIndices.size === 0) {
-        return 0;
+        let hasAny = false;
+        for (const set of selectedSegmentsByLevel.values()) {
+          if (set.size > 0) {
+            hasAny = true;
+            break;
+          }
+        }
+        if (!hasAny) {
+          for (const set of selectedSlabsByLevel.values()) {
+            if (set.size > 0) {
+              hasAny = true;
+              break;
+            }
+          }
+        }
+        if (!hasAny) {
+          for (const set of selectedRampsByLevel.values()) {
+            if (set.size > 0) {
+              hasAny = true;
+              break;
+            }
+          }
+        }
+        if (!hasAny) {
+          return 0;
+        }
       }
 
       recordUndoSnapshot();
 
-      const indices = Array.from(selectedSegmentIndices).sort((a, b) => b - a);
-      for (let i = 0; i < indices.length; i += 1) {
-        if (indices[i] >= 0 && indices[i] < segments.length) {
-          segments.splice(indices[i], 1);
+      let removedCount = 0;
+      for (let levelIndex = 0; levelIndex < floors.length; levelIndex += 1) {
+        const level = floors[levelIndex];
+        if (!level) {
+          continue;
+        }
+
+        const levelSegSelection = getSelectionSetForLevel(selectedSegmentsByLevel, levelIndex);
+        const segIndices = Array.from(levelSegSelection).sort((a, b) => b - a);
+        for (let i = 0; i < segIndices.length; i += 1) {
+          if (segIndices[i] >= 0 && segIndices[i] < level.segments.length) {
+            level.segments.splice(segIndices[i], 1);
+            removedCount += 1;
+          }
+        }
+
+        if (!Array.isArray(level.slabBoxes)) {
+          level.slabBoxes = [];
+        }
+        const levelSlabSelection = getSelectionSetForLevel(selectedSlabsByLevel, levelIndex);
+        const slabIndices = Array.from(levelSlabSelection).sort((a, b) => b - a);
+        for (let i = 0; i < slabIndices.length; i += 1) {
+          if (slabIndices[i] >= 0 && slabIndices[i] < level.slabBoxes.length) {
+            level.slabBoxes.splice(slabIndices[i], 1);
+            removedCount += 1;
+          }
+        }
+
+        if (!Array.isArray(level.ramps)) {
+          level.ramps = [];
+        }
+        const levelRampSelection = getSelectionSetForLevel(selectedRampsByLevel, levelIndex);
+        const rampIndices = Array.from(levelRampSelection).sort((a, b) => b - a);
+        for (let i = 0; i < rampIndices.length; i += 1) {
+          if (rampIndices[i] >= 0 && rampIndices[i] < level.ramps.length) {
+            level.ramps.splice(rampIndices[i], 1);
+            removedCount += 1;
+          }
         }
       }
 
-      const slabBoxes = getCurrentLevelSlabBoxes();
-      const slabIndices = Array.from(selectedSlabBoxIndices).sort((a, b) => b - a);
-      for (let i = 0; i < slabIndices.length; i += 1) {
-        if (slabIndices[i] >= 0 && slabIndices[i] < slabBoxes.length) {
-          slabBoxes.splice(slabIndices[i], 1);
-        }
-      }
-
-      const ramps = getCurrentLevelRamps();
-      const rampIndices = Array.from(selectedRampIndices).sort((a, b) => b - a);
-      for (let i = 0; i < rampIndices.length; i += 1) {
-        if (rampIndices[i] >= 0 && rampIndices[i] < ramps.length) {
-          ramps.splice(rampIndices[i], 1);
-        }
-      }
-
-      const removedCount = indices.length + slabIndices.length + rampIndices.length;
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -2360,6 +2906,102 @@
         }
       }
       return indices;
+    }
+
+    function boxIntersectsRect(box, rect) {
+      if (!box) {
+        return false;
+      }
+
+      const corners = getSlabBoxCorners(box);
+      if (!Array.isArray(corners) || corners.length !== 4) {
+        return false;
+      }
+
+      for (let i = 0; i < corners.length; i += 1) {
+        if (pointInRect(corners[i], rect)) {
+          return true;
+        }
+      }
+
+      const rectCorners = [
+        { x: rect.minX, y: rect.minY },
+        { x: rect.maxX, y: rect.minY },
+        { x: rect.maxX, y: rect.maxY },
+        { x: rect.minX, y: rect.maxY }
+      ];
+
+      for (let i = 0; i < rectCorners.length; i += 1) {
+        if (pointInSlabBox(rectCorners[i], box)) {
+          return true;
+        }
+      }
+
+      const rectEdges = [
+        [rectCorners[0], rectCorners[1]],
+        [rectCorners[1], rectCorners[2]],
+        [rectCorners[2], rectCorners[3]],
+        [rectCorners[3], rectCorners[0]]
+      ];
+      const boxEdges = [
+        [corners[0], corners[1]],
+        [corners[1], corners[2]],
+        [corners[2], corners[3]],
+        [corners[3], corners[0]]
+      ];
+      const eps = 1e-6;
+
+      for (let i = 0; i < boxEdges.length; i += 1) {
+        for (let j = 0; j < rectEdges.length; j += 1) {
+          const hit = segmentIntersectionParams2D(boxEdges[i][0], boxEdges[i][1], rectEdges[j][0], rectEdges[j][1]);
+          if (!hit) {
+            continue;
+          }
+          if (hit.t >= -eps && hit.t <= 1 + eps && hit.u >= -eps && hit.u <= 1 + eps) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function collectMarqueeSelection(a, b) {
+      const rect = getRectFromWorldPoints(a, b);
+      const segmentIndices = collectSegmentsInMarquee(a, b);
+      const slabIndices = [];
+      const rampIndices = [];
+
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      for (let i = 0; i < slabBoxes.length; i += 1) {
+        const box = slabBoxes[i];
+        if (!box) {
+          continue;
+        }
+        if (!isSlabTypeVisible(box.type || "floor")) {
+          continue;
+        }
+        if (boxIntersectsRect(box, rect)) {
+          slabIndices.push(i);
+        }
+      }
+
+      const ramps = getCurrentLevelRamps();
+      for (let i = 0; i < ramps.length; i += 1) {
+        const ramp = ramps[i];
+        if (!ramp) {
+          continue;
+        }
+        if (boxIntersectsRect(ramp, rect)) {
+          rampIndices.push(i);
+        }
+      }
+
+      return {
+        segments: segmentIndices,
+        slabs: slabIndices,
+        ramps: rampIndices
+      };
     }
 
     function getSingleSelectedEndpointHit(pointerWorld) {
@@ -3081,9 +3723,7 @@
         }
       }
 
-      selectedSegmentIndices.clear();
-      selectedSlabBoxIndices.clear();
-      selectedRampIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -4505,7 +5145,7 @@
         preview3dOverlay.classList.remove("hidden");
         preview3dOverlay.setAttribute("aria-hidden", "false");
 
-        const renderer = new THREE.WebGLRenderer({ canvas: preview3dCanvas, antialias: true, alpha: false });
+        const renderer = new THREE.WebGLRenderer({ canvas: preview3dCanvas, antialias: false, alpha: false });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
         const scene = new THREE.Scene();
@@ -4658,6 +5298,11 @@
       pointerGrid = canvasToGrid(p.x, p.y);
       const pointerWorld = canvasToWorld(p.x, p.y);
 
+      if (pendingDuplicate) {
+        commitPendingDuplicateAt(pointerGrid);
+        return;
+      }
+
       if (activeTool === "select") {
         const hitIndex = findNearestSegmentIndex(pointerGrid, () => true);
         const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
@@ -4683,10 +5328,11 @@
         }
 
         if (rampHitIndex >= 0 && !addMode && !removeMode) {
-          selectedSegmentIndices.clear();
-          selectedSlabBoxIndices.clear();
-          selectedRampIndices.clear();
-          selectedRampIndices.add(rampHitIndex);
+          const keepCurrentSelection = selectedRampIndices.has(rampHitIndex);
+          if (!keepCurrentSelection) {
+            clearAllSelections();
+            selectedRampIndices.add(rampHitIndex);
+          }
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4711,10 +5357,11 @@
         }
 
         if (slabHitIndex >= 0 && !addMode && !removeMode) {
-          selectedSegmentIndices.clear();
-          selectedRampIndices.clear();
-          selectedSlabBoxIndices.clear();
-          selectedSlabBoxIndices.add(slabHitIndex);
+          const keepCurrentSelection = selectedSlabBoxIndices.has(slabHitIndex);
+          if (!keepCurrentSelection) {
+            clearAllSelections();
+            selectedSlabBoxIndices.add(slabHitIndex);
+          }
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4753,10 +5400,11 @@
         }
 
         if (hitIndex >= 0 && !addMode && !removeMode) {
-          selectedSlabBoxIndices.clear();
-          selectedRampIndices.clear();
-          selectedSegmentIndices.clear();
-          selectedSegmentIndices.add(hitIndex);
+          const keepCurrentSelection = selectedSegmentIndices.has(hitIndex);
+          if (!keepCurrentSelection) {
+            clearAllSelections();
+            selectedSegmentIndices.add(hitIndex);
+          }
 
           dragState = {
             mode: "move-mixed-selection",
@@ -4776,9 +5424,7 @@
           status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         } else {
           if (!addMode && !removeMode) {
-            selectedSegmentIndices.clear();
-            selectedSlabBoxIndices.clear();
-            selectedRampIndices.clear();
+            clearAllSelections();
           }
           isMarqueeSelecting = true;
           marqueeStartWorld = clonePoint(pointerWorld);
@@ -4922,40 +5568,66 @@
             snapRampToGrid(ramp);
           }
         } else if (dragState.mode === "move-mixed-selection") {
-          const slabBoxes = getCurrentLevelSlabBoxes();
-          const ramps = getCurrentLevelRamps();
-
-          for (let i = 0; i < dragState.originals.segments.length; i += 1) {
-            const original = dragState.originals.segments[i];
-            const seg = segments[original.index];
-            if (!seg) {
-              continue;
+          if (Array.isArray(dragState.originals.segmentsByLevel)) {
+            for (let i = 0; i < dragState.originals.segmentsByLevel.length; i += 1) {
+              const levelData = dragState.originals.segmentsByLevel[i];
+              const level = floors[levelData.levelIndex];
+              if (!level || !Array.isArray(levelData.items)) {
+                continue;
+              }
+              for (let j = 0; j < levelData.items.length; j += 1) {
+                const original = levelData.items[j];
+                const seg = level.segments[original.index];
+                if (!seg) {
+                  continue;
+                }
+                seg.a.x = original.a.x + dx;
+                seg.a.y = original.a.y + dy;
+                seg.b.x = original.b.x + dx;
+                seg.b.y = original.b.y + dy;
+              }
             }
-            seg.a.x = original.a.x + dx;
-            seg.a.y = original.a.y + dy;
-            seg.b.x = original.b.x + dx;
-            seg.b.y = original.b.y + dy;
           }
 
-          for (let i = 0; i < dragState.originals.slabs.length; i += 1) {
-            const original = dragState.originals.slabs[i];
-            const box = slabBoxes[original.index];
-            if (!box) {
-              continue;
+          if (Array.isArray(dragState.originals.slabsByLevel)) {
+            for (let i = 0; i < dragState.originals.slabsByLevel.length; i += 1) {
+              const levelData = dragState.originals.slabsByLevel[i];
+              const level = floors[levelData.levelIndex];
+              const slabBoxes = level && Array.isArray(level.slabBoxes) ? level.slabBoxes : null;
+              if (!slabBoxes || !Array.isArray(levelData.items)) {
+                continue;
+              }
+              for (let j = 0; j < levelData.items.length; j += 1) {
+                const original = levelData.items[j];
+                const box = slabBoxes[original.index];
+                if (!box) {
+                  continue;
+                }
+                box.cx = original.cx + dx;
+                box.cy = original.cy + dy;
+              }
             }
-            box.cx = original.cx + dx;
-            box.cy = original.cy + dy;
           }
 
-          for (let i = 0; i < dragState.originals.ramps.length; i += 1) {
-            const original = dragState.originals.ramps[i];
-            const ramp = ramps[original.index];
-            if (!ramp) {
-              continue;
+          if (Array.isArray(dragState.originals.rampsByLevel)) {
+            for (let i = 0; i < dragState.originals.rampsByLevel.length; i += 1) {
+              const levelData = dragState.originals.rampsByLevel[i];
+              const level = floors[levelData.levelIndex];
+              const ramps = level && Array.isArray(level.ramps) ? level.ramps : null;
+              if (!ramps || !Array.isArray(levelData.items)) {
+                continue;
+              }
+              for (let j = 0; j < levelData.items.length; j += 1) {
+                const original = levelData.items[j];
+                const ramp = ramps[original.index];
+                if (!ramp) {
+                  continue;
+                }
+                ramp.cx = original.cx + dx;
+                ramp.cy = original.cy + dy;
+                snapRampToGrid(ramp);
+              }
             }
-            ramp.cx = original.cx + dx;
-            ramp.cy = original.cy + dy;
-            snapRampToGrid(ramp);
           }
         } else if (dragState.mode === "resize-box-side") {
           const source = dragState.kind === "ramp" ? getCurrentLevelRamps() : getCurrentLevelSlabBoxes();
@@ -5022,21 +5694,31 @@
 
       if (activeTool === "select") {
         if (isMarqueeSelecting && marqueeStartWorld && marqueeEndWorld) {
-          const hits = collectSegmentsInMarquee(marqueeStartWorld, marqueeEndWorld);
+          const hits = collectMarqueeSelection(marqueeStartWorld, marqueeEndWorld);
 
           if (marqueeMode === "replace") {
-            selectedSegmentIndices.clear();
-            selectedSlabBoxIndices.clear();
-            selectedRampIndices.clear();
+            clearAllSelections();
           }
 
           if (marqueeMode === "add" || marqueeMode === "replace") {
-            for (let i = 0; i < hits.length; i += 1) {
-              selectedSegmentIndices.add(hits[i]);
+            for (let i = 0; i < hits.segments.length; i += 1) {
+              selectedSegmentIndices.add(hits.segments[i]);
+            }
+            for (let i = 0; i < hits.slabs.length; i += 1) {
+              selectedSlabBoxIndices.add(hits.slabs[i]);
+            }
+            for (let i = 0; i < hits.ramps.length; i += 1) {
+              selectedRampIndices.add(hits.ramps[i]);
             }
           } else if (marqueeMode === "remove") {
-            for (let i = 0; i < hits.length; i += 1) {
-              selectedSegmentIndices.delete(hits[i]);
+            for (let i = 0; i < hits.segments.length; i += 1) {
+              selectedSegmentIndices.delete(hits.segments[i]);
+            }
+            for (let i = 0; i < hits.slabs.length; i += 1) {
+              selectedSlabBoxIndices.delete(hits.slabs[i]);
+            }
+            for (let i = 0; i < hits.ramps.length; i += 1) {
+              selectedRampIndices.delete(hits.ramps[i]);
             }
           }
 
@@ -5208,27 +5890,19 @@
       const slabHitIndex = findTopmostSlabBoxIndex(pointerWorld, () => true);
       const rampHitIndex = findTopmostRampIndex(pointerWorld, () => true);
       if (rampHitIndex >= 0) {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         selectedRampIndices.add(rampHitIndex);
         status.textContent = "Tool changed to select. 1 ramp selected.";
       } else if (slabHitIndex >= 0) {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         selectedSlabBoxIndices.add(slabHitIndex);
         status.textContent = "Tool changed to select. 1 slab box selected.";
       } else if (hitIndex >= 0) {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         selectedSegmentIndices.add(hitIndex);
         status.textContent = "Tool changed to select. 1 line selected.";
       } else {
-        selectedSegmentIndices.clear();
-        selectedSlabBoxIndices.clear();
-        selectedRampIndices.clear();
+        clearAllSelections();
         status.textContent = "Tool changed to select.";
       }
       redraw();
@@ -5266,24 +5940,47 @@
         }
       } else if (isPrimaryModifier && key === "a") {
         event.preventDefault();
-        selectedSegmentIndices = new Set();
-        for (let i = 0; i < segments.length; i += 1) {
-          selectedSegmentIndices.add(i);
+
+        if (!isFloorBoxesVisible || !isCeilingBoxesVisible) {
+          isFloorBoxesVisible = true;
+          isCeilingBoxesVisible = true;
+          updateSlabVisibilityButtons();
+          saveUiState();
         }
-        selectedSlabBoxIndices = new Set();
-        const slabBoxes = getCurrentLevelSlabBoxes();
-        for (let i = 0; i < slabBoxes.length; i += 1) {
-          if (slabBoxes[i] && isSlabTypeVisible(slabBoxes[i].type || "floor")) {
-            selectedSlabBoxIndices.add(i);
+
+        clearAllSelections();
+        for (let levelIndex = 0; levelIndex < floors.length; levelIndex += 1) {
+          const level = floors[levelIndex];
+          if (!level) {
+            continue;
+          }
+
+          const levelSegSelection = getSelectionSetForLevel(selectedSegmentsByLevel, levelIndex);
+          for (let i = 0; i < level.segments.length; i += 1) {
+            levelSegSelection.add(i);
+          }
+
+          const levelSlabSelection = getSelectionSetForLevel(selectedSlabsByLevel, levelIndex);
+          const slabBoxes = Array.isArray(level.slabBoxes) ? level.slabBoxes : [];
+          for (let i = 0; i < slabBoxes.length; i += 1) {
+            const slab = slabBoxes[i];
+            if (!slab) {
+              continue;
+            }
+            if (isSlabTypeVisible(slab.type || "floor")) {
+              levelSlabSelection.add(i);
+            }
+          }
+
+          const levelRampSelection = getSelectionSetForLevel(selectedRampsByLevel, levelIndex);
+          const ramps = Array.isArray(level.ramps) ? level.ramps : [];
+          for (let i = 0; i < ramps.length; i += 1) {
+            if (ramps[i]) {
+              levelRampSelection.add(i);
+            }
           }
         }
-        selectedRampIndices = new Set();
-        const ramps = getCurrentLevelRamps();
-        for (let i = 0; i < ramps.length; i += 1) {
-          if (ramps[i]) {
-            selectedRampIndices.add(i);
-          }
-        }
+        bindSelectionSetsToCurrentLevel();
         isMarqueeSelecting = false;
         marqueeStartWorld = null;
         marqueeEndWorld = null;
@@ -5292,7 +5989,7 @@
         status.textContent = `Selected ${selectedSegmentIndices.size} line(s), ${selectedSlabBoxIndices.size} slab box(es), and ${selectedRampIndices.size} ramp(s).`;
         redraw();
       } else if (key === "delete" || key === "backspace") {
-        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+        if (hasAnySelectionAcrossLevels()) {
           event.preventDefault();
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
@@ -5300,7 +5997,7 @@
         }
       } else if (key === "x") {
         event.preventDefault();
-        if (selectedSegmentIndices.size > 0 || selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0) {
+        if (hasAnySelectionAcrossLevels()) {
           const removedCount = deleteSelectedSegments();
           status.textContent = `Removed ${removedCount} selected item(s).`;
           redraw();
@@ -5322,6 +6019,14 @@
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
+      } else if (!isPrimaryModifier && key === "c") {
+        event.preventDefault();
+        if (beginDuplicatePreview()) {
+          status.textContent = "Duplicate preview active. Move cursor and click to place. Press ESC to cancel.";
+          redraw();
+        } else {
+          status.textContent = "Select at least one line, slab, or ramp before copying.";
+        }
       } else if ((key === "q" || key === "e") && activeTool === "select" && (selectedSlabBoxIndices.size > 0 || selectedRampIndices.size > 0)) {
         event.preventDefault();
         recordUndoSnapshot();
@@ -5363,7 +6068,12 @@
         status.textContent = `${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? (activeTool === "halframp" ? "Half ramp" : activeTool === "tophalframp" ? "Top half ramp" : "Ramp") : activeTool === "ceilingbox" ? "Ceiling" : activeTool === "halfwallbox" ? "Half wall" : "Floor"} ${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
       } else if (key === "escape") {
-        if (!helpOverlay.classList.contains("hidden")) {
+        if (pendingDuplicate) {
+          event.preventDefault();
+          pendingDuplicate = null;
+          status.textContent = "Duplicate preview canceled.";
+          redraw();
+        } else if (!helpOverlay.classList.contains("hidden")) {
           event.preventDefault();
           closeHelp();
           status.textContent = "Help closed.";
@@ -5420,7 +6130,7 @@
         }
         floors[i].ramps.length = 0;
       }
-      selectedSegmentIndices.clear();
+      clearAllSelections();
       isMarqueeSelecting = false;
       marqueeStartWorld = null;
       marqueeEndWorld = null;
@@ -5473,6 +6183,10 @@
     zoomOutButton.addEventListener("click", () => setCanvasZoom(gridPx - 2));
     zoomInButton.addEventListener("click", () => setCanvasZoom(gridPx + 2));
     zoomResetButton.addEventListener("click", () => setCanvasZoom(DEFAULT_GRID_PX));
+    centerOriginButton.addEventListener("click", () => {
+      centerCanvasOnOrigin();
+      status.textContent = "Canvas centered on origin.";
+    });
 
     floorAddAboveButton.addEventListener("click", () => {
       addLevel();
