@@ -20,10 +20,17 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private GameObject halfWallSlabPrefab;
     [SerializeField] private GameObject rampPrefab;
 
+    [Header("Object Prefabs By Size")]
+    [SerializeField] private List<GameObject> object1x1Prefabs = new List<GameObject>();
+    [SerializeField] private List<GameObject> object2x2Prefabs = new List<GameObject>();
+    [SerializeField] private List<GameObject> object3x3Prefabs = new List<GameObject>();
+    [SerializeField] private List<GameObject> object5x5Prefabs = new List<GameObject>();
+
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
     [SerializeField] private bool clearPreviousOnBuild = true;
     [SerializeField] private float defaultGridSizeUnits = 1.0f;
+    [SerializeField] private int randomSeed = -1;
 
     [Header("Slab Offsets (Unity Importer Only)")]
     [SerializeField] private float floorSlabYOffset = 0.0f;
@@ -65,6 +72,16 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         public SegmentData[] segments;
         public SlabBoxData[] slabBoxes;
         public RampData[] ramps;
+        public PlaceObjectData[] placeObjects;
+    }
+
+    [Serializable]
+    private class PlaceObjectData
+    {
+        public int size;
+        public float cx;
+        public float cy;
+        public float rotation;
     }
 
     [Serializable]
@@ -168,6 +185,12 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         int spawnedLineCount = 0;
         int spawnedSlabCount = 0;
         int spawnedRampCount = 0;
+        int spawnedObjectCount = 0;
+
+        int effectiveSeed = randomSeed == -1
+            ? unchecked((int)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+            : randomSeed;
+        System.Random rng = new System.Random(effectiveSeed);
 
         if (plan.floors != null && plan.floors.Length > 0)
         {
@@ -186,6 +209,9 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
                 RampData[] ramps = plan.floors[i] != null ? plan.floors[i].ramps : null;
                 spawnedRampCount += SpawnRamps(ramps, i, grid, floorStride, wallHeightFromPlan, slabThickness);
+
+                PlaceObjectData[] placeObjects = plan.floors[i] != null ? plan.floors[i].placeObjects : null;
+                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, rng);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
@@ -199,8 +225,106 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         if (logBuildSummary)
         {
-            Debug.Log($"PlanJsonCubeSpawner: Spawn complete. Line prefabs: {spawnedLineCount}, slab prefabs: {spawnedSlabCount}, ramp prefabs: {spawnedRampCount}", this);
+            Debug.Log($"PlanJsonCubeSpawner: Spawn complete. Line prefabs: {spawnedLineCount}, slab prefabs: {spawnedSlabCount}, ramp prefabs: {spawnedRampCount}, object prefabs: {spawnedObjectCount}. Seed: {effectiveSeed}", this);
         }
+    }
+
+    private int SpawnPlacedObjects(
+        PlaceObjectData[] placeObjects,
+        float levelBaseY,
+        float gridSize,
+        System.Random rng)
+    {
+        if (placeObjects == null || placeObjects.Length == 0 || rng == null)
+        {
+            return 0;
+        }
+
+        int count = 0;
+
+        for (int i = 0; i < placeObjects.Length; i++)
+        {
+            PlaceObjectData obj = placeObjects[i];
+            if (obj == null)
+            {
+                continue;
+            }
+
+            int size = NormalizeObjectSize(obj.size);
+            List<GameObject> prefabList = ResolveObjectPrefabList(size);
+            GameObject prefab = PickRandomPrefab(prefabList, rng);
+            if (prefab == null)
+            {
+                continue;
+            }
+
+            float px = obj.cx * gridSize;
+            float pz = obj.cy * gridSize;
+            if (!float.IsFinite(px) || !float.IsFinite(pz))
+            {
+                continue;
+            }
+
+            // Object prefabs are authored per-size list (1x1, 2x2, 3x3, 5x5), so keep their original scale.
+            Vector3 localScale = prefab.transform.localScale;
+            Vector3 localPos = new Vector3(px, levelBaseY, pz);
+            Quaternion localRot = Quaternion.Euler(0f, obj.rotation, 0f);
+
+            SpawnPrefab(prefab, localPos, localRot, localScale);
+            count += 1;
+        }
+
+        return count;
+    }
+
+    private int NormalizeObjectSize(int raw)
+    {
+        if (raw == 1 || raw == 2 || raw == 3 || raw == 5)
+        {
+            return raw;
+        }
+
+        return 1;
+    }
+
+    private List<GameObject> ResolveObjectPrefabList(int size)
+    {
+        switch (size)
+        {
+            case 2:
+                return object2x2Prefabs;
+            case 3:
+                return object3x3Prefabs;
+            case 5:
+                return object5x5Prefabs;
+            default:
+                return object1x1Prefabs;
+        }
+    }
+
+    private GameObject PickRandomPrefab(List<GameObject> prefabs, System.Random rng)
+    {
+        if (prefabs == null || prefabs.Count == 0 || rng == null)
+        {
+            return null;
+        }
+
+        List<GameObject> valid = new List<GameObject>();
+        for (int i = 0; i < prefabs.Count; i++)
+        {
+            if (prefabs[i] != null)
+            {
+                valid.Add(prefabs[i]);
+            }
+        }
+
+        if (valid.Count == 0)
+        {
+            return null;
+        }
+
+        int idx = rng.Next(0, valid.Count);
+        return valid[idx];
     }
 
     private int SpawnRamps(
