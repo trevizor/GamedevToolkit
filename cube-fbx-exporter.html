@@ -1312,6 +1312,31 @@
       }));
     }
 
+    function getRampExportCorners(ramp) {
+      const cx = Number(ramp.cx);
+      const cy = Number(ramp.cy);
+      const sx = Math.max(0.001, Number(ramp.sx));
+      const sy = Math.max(0.001, Number(ramp.sy));
+
+      // Keep ramp 2D orientation aligned with export orientation.
+      const angleRad = -normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
+      const cos = Math.cos(angleRad);
+      const sin = Math.sin(angleRad);
+      const hx = sx * 0.5;
+      const hy = sy * 0.5;
+      const local = [
+        { x: -hx, y: -hy },
+        { x: hx, y: -hy },
+        { x: hx, y: hy },
+        { x: -hx, y: hy }
+      ];
+
+      return local.map(p => ({
+        x: cx + (p.x * cos - p.y * sin),
+        y: cy + (p.x * sin + p.y * cos)
+      }));
+    }
+
     function isSlabTypeVisible(type) {
       if (type === "ceiling") {
         return isCeilingBoxesVisible;
@@ -1729,7 +1754,7 @@
         if (!ramp) {
           continue;
         }
-        const corners = getSlabBoxCorners(ramp);
+        const corners = getRampExportCorners(ramp);
         if (corners.length !== 4) {
           continue;
         }
@@ -1757,11 +1782,25 @@
         ctx.fill();
         ctx.stroke();
 
-        const angleRad = normalizeRotationDegrees(ramp.rotation) * Math.PI / 180;
-        const dir = { x: Math.sin(angleRad), y: Math.cos(angleRad) };
-        const arrowFlip = (rampType === "tophalf") ? -1 : 1;
-        const start = gridToCanvas({ x: ramp.cx - dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy - dir.y * ramp.sy * 0.25 * arrowFlip });
-        const end = gridToCanvas({ x: ramp.cx + dir.x * ramp.sy * 0.25 * arrowFlip, y: ramp.cy + dir.y * ramp.sy * 0.25 * arrowFlip });
+        const frontCenter = {
+          x: (corners[0].x + corners[1].x) * 0.5,
+          y: (corners[0].y + corners[1].y) * 0.5
+        };
+        const backCenter = {
+          x: (corners[2].x + corners[3].x) * 0.5,
+          y: (corners[2].y + corners[3].y) * 0.5
+        };
+        const riseFrom = rampType === "tophalf" ? backCenter : frontCenter;
+        const riseTo = rampType === "tophalf" ? frontCenter : backCenter;
+        const dirX = riseTo.x - riseFrom.x;
+        const dirY = riseTo.y - riseFrom.y;
+        const dirLen = Math.hypot(dirX, dirY);
+        const safeDirX = dirLen > 1e-6 ? dirX / dirLen : 0;
+        const safeDirY = dirLen > 1e-6 ? dirY / dirLen : 1;
+        const halfArrowLen = Math.max(0.25, Number(ramp.sy) * 0.25);
+        const center = { x: Number(ramp.cx), y: Number(ramp.cy) };
+        const start = gridToCanvas({ x: center.x - safeDirX * halfArrowLen, y: center.y - safeDirY * halfArrowLen });
+        const end = gridToCanvas({ x: center.x + safeDirX * halfArrowLen, y: center.y + safeDirY * halfArrowLen });
         const toLevel = Number.isFinite(Number(ramp.toLevel)) ? Number(ramp.toLevel) : currentLevelIndex;
         const fromLevel = Number.isFinite(Number(ramp.fromLevel)) ? Number(ramp.fromLevel) : currentLevelIndex;
         const rises = rampType === "half" || toLevel > fromLevel;

@@ -25,6 +25,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private bool clearPreviousOnBuild = true;
     [SerializeField] private float defaultGridSizeUnits = 1.0f;
 
+    [Header("Slab Offsets (Unity Importer Only)")]
+    [SerializeField] private float floorSlabYOffset = 0.0f;
+    [SerializeField] private float ceilingSlabYOffset = 0.05f;
+
     [Header("Prefab Length Setup")]
     [SerializeField] private float prefabBaseLength = 1.0f;
 
@@ -153,7 +157,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         float grid = plan.gridSizeUnits > 0f ? plan.gridSizeUnits : defaultGridSizeUnits;
         float wallPrefabHeight = Mathf.Max(0.001f, EstimatePrefabHeight(wallPrefab));
         float wallPrefabThickness = Mathf.Max(0f, EstimatePrefabThickness(wallPrefab));
-        float slabThickness = Mathf.Max(0.01f, wallPrefabThickness);
+        float wallThicknessFromPlan = (plan.settings != null && plan.settings.thickness > 0f)
+            ? plan.settings.thickness
+            : wallPrefabThickness;
+        float slabThickness = Mathf.Max(0.01f, wallThicknessFromPlan);
         float wallHeightFromPlan = (plan.settings != null && plan.settings.height > 0f)
             ? plan.settings.height
             : wallPrefabHeight;
@@ -164,14 +171,14 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         if (plan.floors != null && plan.floors.Length > 0)
         {
-            float floorStride = wallPrefabHeight;
+            float floorStride = wallHeightFromPlan;
             for (int i = 0; i < plan.floors.Length; i++)
             {
                 SegmentData[] segments = plan.floors[i] != null ? plan.floors[i].segments : null;
                 float levelBaseY = i * floorStride;
                 if (segments != null && segments.Length > 0)
                 {
-                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallPrefabThickness);
+                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallThicknessFromPlan);
                 }
 
                 SlabBoxData[] slabBoxes = plan.floors[i] != null ? plan.floors[i].slabBoxes : null;
@@ -183,7 +190,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         }
         else if (plan.segments != null && plan.segments.Length > 0)
         {
-            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallPrefabThickness);
+            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallThicknessFromPlan);
         }
         else
         {
@@ -250,9 +257,12 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            float centerY = Mathf.Min(startY, endY) + rise * 0.5f;
-            Vector3 localPos = new Vector3(px, centerY, pz);
-            Quaternion localRot = Quaternion.Euler(0f, ramp.rotation, 0f);
+            // Ramp prefabs are expected to have pivot at ground level and centered in XZ.
+            float baseY = Mathf.Min(startY, endY);
+            Vector3 localPos = new Vector3(px, baseY, pz);
+            // Exported top-half ramps invert rise direction versus full/half ramps.
+            float yaw = isTopHalfRamp ? (ramp.rotation + 180f) : ramp.rotation;
+            Quaternion localRot = Quaternion.Euler(0f, yaw, 0f);
             Vector3 localScale = new Vector3(sx, rise, sz);
 
             SpawnPrefab(rampPrefab, localPos, localRot, localScale);
@@ -387,6 +397,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             if (isCeiling)
             {
                 y = levelBaseY + wallHeight + safeThickness * 0.5f;
+                y += safeThickness * SLAB_Y_OFFSET_FACTOR + ceilingSlabYOffset;
             }
             else if (isHalfWall)
             {
@@ -401,6 +412,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             if (!isCeiling)
             {
                 y += safeThickness * SLAB_Y_OFFSET_FACTOR;
+            }
+
+            if (!isCeiling && !isHalfWall)
+            {
+                y += floorSlabYOffset;
             }
 
             Vector3 localPos = new Vector3(px, y, pz);
