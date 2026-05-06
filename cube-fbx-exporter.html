@@ -607,6 +607,8 @@
       </div>
       <div class="tool-group" aria-label="S group tools">
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
+        <button id="selectionScaleDownBtn" type="button" class="secondary" title="Scale selection down by 0.25 step around center pivot (Shortcut: [)">Scale -</button>
+        <button id="selectionScaleUpBtn" type="button" class="secondary" title="Scale selection up by 0.25 step around center pivot (Shortcut: ])">Scale +</button>
       </div>
       <div class="tool-group" aria-label="X group tools">
         <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: X (cycles X group)">Remove Wall</button>
@@ -751,6 +753,7 @@
     const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
     const OBJECT_SIZE_OPTIONS = [0.25, 1, 2, 3, 5];
     const OBJECT_SIZE_EPSILON = 0.0001;
+    const SELECTION_SCALE_STEP = 0.25;
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
     const SLAB_Y_OFFSET_FACTOR = 0.1;
 
@@ -779,6 +782,8 @@
     const toolObjectButton = document.getElementById("toolObjectBtn");
     const objectSizeSelect = document.getElementById("objectSizeSelect");
     const toolSelectButton = document.getElementById("toolSelectBtn");
+    const selectionScaleDownButton = document.getElementById("selectionScaleDownBtn");
+    const selectionScaleUpButton = document.getElementById("selectionScaleUpBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
     const zoomInButton = document.getElementById("zoomInBtn");
@@ -1661,7 +1666,10 @@
           return {
             index: idx,
             cx: box.cx,
-            cy: box.cy
+            cy: box.cy,
+            sx: box.sx,
+            sy: box.sy,
+            rotation: box.rotation
           };
         }).filter(Boolean);
         if (levelSlabOriginals.length > 0) {
@@ -1678,7 +1686,10 @@
           return {
             index: idx,
             cx: ramp.cx,
-            cy: ramp.cy
+            cy: ramp.cy,
+            sx: ramp.sx,
+            sy: ramp.sy,
+            rotation: ramp.rotation
           };
         }).filter(Boolean);
         if (levelRampOriginals.length > 0) {
@@ -1695,7 +1706,9 @@
           return {
             index: idx,
             cx: obj.cx,
-            cy: obj.cy
+            cy: obj.cy,
+            size: normalizeObjectSize(obj.size),
+            rotation: Number(obj.rotation) || 0
           };
         }).filter(Boolean);
         if (levelObjectOriginals.length > 0) {
@@ -1704,6 +1717,277 @@
       }
 
       return originals;
+    }
+
+    function buildSelectionScalePivot(originals) {
+      if (!originals) {
+        return null;
+      }
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      function includePoint(point) {
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+          return;
+        }
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      }
+
+      function includeBoxCorners(cx, cy, sx, sy, rotation) {
+        const corners = getSlabBoxCorners({
+          cx,
+          cy,
+          sx,
+          sy,
+          rotation
+        });
+
+        if (!Array.isArray(corners) || corners.length !== 4) {
+          return;
+        }
+
+        for (let i = 0; i < corners.length; i += 1) {
+          includePoint(corners[i]);
+        }
+      }
+
+      if (Array.isArray(originals.segmentsByLevel)) {
+        for (let i = 0; i < originals.segmentsByLevel.length; i += 1) {
+          const levelData = originals.segmentsByLevel[i];
+          if (!levelData || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const seg = levelData.items[j];
+            if (!seg) {
+              continue;
+            }
+            includePoint(seg.a);
+            includePoint(seg.b);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.slabsByLevel)) {
+        for (let i = 0; i < originals.slabsByLevel.length; i += 1) {
+          const levelData = originals.slabsByLevel[i];
+          if (!levelData || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const box = levelData.items[j];
+            if (!box) {
+              continue;
+            }
+            includeBoxCorners(Number(box.cx), Number(box.cy), Number(box.sx), Number(box.sy), Number(box.rotation) || 0);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.rampsByLevel)) {
+        for (let i = 0; i < originals.rampsByLevel.length; i += 1) {
+          const levelData = originals.rampsByLevel[i];
+          if (!levelData || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const ramp = levelData.items[j];
+            if (!ramp) {
+              continue;
+            }
+            includeBoxCorners(Number(ramp.cx), Number(ramp.cy), Number(ramp.sx), Number(ramp.sy), Number(ramp.rotation) || 0);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.objectsByLevel)) {
+        for (let i = 0; i < originals.objectsByLevel.length; i += 1) {
+          const levelData = originals.objectsByLevel[i];
+          if (!levelData || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const obj = levelData.items[j];
+            if (!obj) {
+              continue;
+            }
+            const span = getObjectGridSpan(obj.size);
+            includeBoxCorners(Number(obj.cx), Number(obj.cy), span, span, Number(obj.rotation) || 0);
+          }
+        }
+      }
+
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        return null;
+      }
+
+      return {
+        x: (minX + maxX) * 0.5,
+        y: (minY + maxY) * 0.5
+      };
+    }
+
+    function scaleSelectionByStep(stepDirection) {
+      if (!hasAnySelectionAcrossLevels()) {
+        status.textContent = "Select at least one line, slab, ramp, or object before scaling.";
+        return false;
+      }
+
+      const direction = Number(stepDirection);
+      if (!Number.isFinite(direction) || direction === 0) {
+        return false;
+      }
+
+      const scaleFactor = 1 + SELECTION_SCALE_STEP * direction;
+      if (scaleFactor <= 0.01) {
+        status.textContent = "Scale step too small.";
+        return false;
+      }
+
+      const originals = buildMixedSelectionOriginals();
+      const pivot = buildSelectionScalePivot(originals);
+      if (!pivot) {
+        status.textContent = "Could not compute selection center for scaling.";
+        return false;
+      }
+
+      const transformedPointCache = new Map();
+
+      function transformPoint(x, y) {
+        const key = `${Number(x).toFixed(6)},${Number(y).toFixed(6)}`;
+        const cached = transformedPointCache.get(key);
+        if (cached) {
+          return { x: cached.x, y: cached.y };
+        }
+
+        const scaledX = pivot.x + (Number(x) - pivot.x) * scaleFactor;
+        const scaledY = pivot.y + (Number(y) - pivot.y) * scaleFactor;
+        const snapped = {
+          x: Math.round(scaledX),
+          y: Math.round(scaledY)
+        };
+        transformedPointCache.set(key, snapped);
+        return { x: snapped.x, y: snapped.y };
+      }
+
+      recordUndoSnapshot();
+
+      if (Array.isArray(originals.segmentsByLevel)) {
+        for (let i = 0; i < originals.segmentsByLevel.length; i += 1) {
+          const levelData = originals.segmentsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          if (!level || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const seg = level.segments[original.index];
+            if (!seg) {
+              continue;
+            }
+
+            const a = transformPoint(original.a.x, original.a.y);
+            const b = transformPoint(original.b.x, original.b.y);
+            seg.a.x = a.x;
+            seg.a.y = a.y;
+            seg.b.x = b.x;
+            seg.b.y = b.y;
+          }
+        }
+      }
+
+      if (Array.isArray(originals.slabsByLevel)) {
+        for (let i = 0; i < originals.slabsByLevel.length; i += 1) {
+          const levelData = originals.slabsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          const slabBoxes = level && Array.isArray(level.slabBoxes) ? level.slabBoxes : null;
+          if (!slabBoxes || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const box = slabBoxes[original.index];
+            if (!box) {
+              continue;
+            }
+
+            const center = transformPoint(original.cx, original.cy);
+            box.cx = center.x;
+            box.cy = center.y;
+            box.sx = Math.max(1, Number(original.sx) * scaleFactor);
+            box.sy = Math.max(1, Number(original.sy) * scaleFactor);
+            snapSlabBoxToGrid(box);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.rampsByLevel)) {
+        for (let i = 0; i < originals.rampsByLevel.length; i += 1) {
+          const levelData = originals.rampsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          const ramps = level && Array.isArray(level.ramps) ? level.ramps : null;
+          if (!ramps || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const ramp = ramps[original.index];
+            if (!ramp) {
+              continue;
+            }
+
+            const center = transformPoint(original.cx, original.cy);
+            ramp.cx = center.x;
+            ramp.cy = center.y;
+            ramp.sx = Math.max(1, Number(original.sx) * scaleFactor);
+            ramp.sy = Math.max(1, Number(original.sy) * scaleFactor);
+            snapRampToGrid(ramp);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.objectsByLevel)) {
+        for (let i = 0; i < originals.objectsByLevel.length; i += 1) {
+          const levelData = originals.objectsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          const objects = level && Array.isArray(level.placeObjects) ? level.placeObjects : null;
+          if (!objects || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const obj = objects[original.index];
+            if (!obj) {
+              continue;
+            }
+
+            const center = transformPoint(original.cx, original.cy);
+            obj.cx = center.x;
+            obj.cy = center.y;
+            obj.size = normalizeObjectSize(Number(original.size) * scaleFactor);
+            snapPlacedObjectToGrid(obj);
+          }
+        }
+      }
+
+      queueLocalAutosave();
+      status.textContent = `Scaled selection by ${scaleFactor.toFixed(2)}x around center pivot.`;
+      redraw();
+      return true;
     }
 
     function getSingleSelectedSlabHandleHit(pointerWorld) {
@@ -6747,6 +7031,12 @@
       } else if (key === "d") {
         event.preventDefault();
         cycleToolGroup(["door", "window", "cut"], "D group");
+      } else if (key === "[") {
+        event.preventDefault();
+        scaleSelectionByStep(-1);
+      } else if (key === "]") {
+        event.preventDefault();
+        scaleSelectionByStep(1);
       } else if (!isPrimaryModifier && key === "c") {
         event.preventDefault();
         if (beginDuplicatePreview()) {
@@ -6924,6 +7214,12 @@
     toolTopHalfRampButton.addEventListener("click", () => setTool("tophalframp"));
     toolObjectButton.addEventListener("click", () => setTool("placeobject"));
     toolSelectButton.addEventListener("click", () => setTool("select"));
+    selectionScaleDownButton.addEventListener("click", () => {
+      scaleSelectionByStep(-1);
+    });
+    selectionScaleUpButton.addEventListener("click", () => {
+      scaleSelectionByStep(1);
+    });
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 
     objectSizeSelect.addEventListener("change", () => {
