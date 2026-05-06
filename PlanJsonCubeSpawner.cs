@@ -42,6 +42,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
     [Header("Prefab Length Setup")]
     [SerializeField] private float prefabBaseLength = 1.0f;
+    [SerializeField] private float joinLengthCorrectionUnits = 0.125f;
 
     [Header("Debug")]
     [SerializeField] private bool logBuildSummary = true;
@@ -606,9 +607,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         Vector2 dir = delta / len;
         float safeTrimAtStart = Mathf.Clamp(trimAtStart, 0f, len - 0.0001f);
         float safeExtendAtEnd = Mathf.Max(0f, extendAtEnd);
+        float safeJoinCorrection = Mathf.Max(0f, joinLengthCorrectionUnits);
+        float endJoinCorrection = safeExtendAtEnd > 0f ? safeJoinCorrection : 0f;
 
         // For start-pivoted prefabs, trim joined starts and extend joined ends by matching amounts.
-        float adjustedLength = (len - safeTrimAtStart) + safeExtendAtEnd;
+        float adjustedLength = (len - safeTrimAtStart) + safeExtendAtEnd + endJoinCorrection;
         if (adjustedLength <= 0.0001f)
         {
             return;

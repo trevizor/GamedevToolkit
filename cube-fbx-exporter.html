@@ -4958,6 +4958,140 @@
       return usage;
     }
 
+    function buildPerpendicularJoinTrimsForMesh(sourceSegments, trimAmount) {
+      const trims = [];
+      if (!Array.isArray(sourceSegments) || sourceSegments.length === 0) {
+        return trims;
+      }
+
+      const epsPoint = 1e-5;
+      const epsParam = 1e-4;
+      const maxParallelDot = 0.12;
+      const safeTrim = Math.max(0, Number(trimAmount) || 0);
+      if (safeTrim <= 1e-6) {
+        return trims;
+      }
+
+      function ensureTrimEntry(index) {
+        if (!trims[index]) {
+          trims[index] = { start: 0, end: 0 };
+        }
+        return trims[index];
+      }
+
+      function addEndpointTrim(index, endpoint, amount) {
+        const entry = ensureTrimEntry(index);
+        const key = endpoint === "end" ? "end" : "start";
+        entry[key] = Math.max(entry[key], amount);
+      }
+
+      function samePoint(a, b) {
+        return Math.hypot(a.x - b.x, a.z - b.z) <= epsPoint;
+      }
+
+      function chooseEndpointTrimOwner(seg0, seg1) {
+        if (seg0.type !== seg1.type) {
+          if (seg0.type === "halfwall") {
+            return seg0;
+          }
+          if (seg1.type === "halfwall") {
+            return seg1;
+          }
+        }
+
+        if (Math.abs(seg0.len - seg1.len) > 1e-6) {
+          return seg0.len < seg1.len ? seg0 : seg1;
+        }
+
+        return seg0.index > seg1.index ? seg0 : seg1;
+      }
+
+      const wallSegments = [];
+      for (let i = 0; i < sourceSegments.length; i += 1) {
+        const seg = sourceSegments[i];
+        if (!seg || !seg.a || !seg.b) {
+          continue;
+        }
+
+        const segType = seg.type || "wall";
+        if (!isWallLikeMeshSegmentType(segType)) {
+          continue;
+        }
+
+        const a = vec2(Number(seg.a.x) * GRID_SIZE_UNITS, Number(seg.a.y) * GRID_SIZE_UNITS);
+        const b = vec2(Number(seg.b.x) * GRID_SIZE_UNITS, Number(seg.b.y) * GRID_SIZE_UNITS);
+        if (![a.x, a.z, b.x, b.z].every(Number.isFinite)) {
+          continue;
+        }
+
+        const delta = vec2Sub(b, a);
+        const len = vec2Length(delta);
+        if (len <= 1e-8) {
+          continue;
+        }
+
+        wallSegments.push({
+          index: i,
+          type: segType,
+          a,
+          b,
+          len,
+          dir: vec2Scale(delta, 1 / len)
+        });
+      }
+
+      for (let i = 0; i < wallSegments.length; i += 1) {
+        for (let j = i + 1; j < wallSegments.length; j += 1) {
+          const s0 = wallSegments[i];
+          const s1 = wallSegments[j];
+
+          const dot = Math.abs(vec2Dot(s0.dir, s1.dir));
+          if (dot > maxParallelDot) {
+            continue;
+          }
+
+          const s0Endpoints = [
+            { endpoint: "start", point: s0.a },
+            { endpoint: "end", point: s0.b }
+          ];
+          const s1Endpoints = [
+            { endpoint: "start", point: s1.a },
+            { endpoint: "end", point: s1.b }
+          ];
+
+          for (let e0 = 0; e0 < s0Endpoints.length; e0 += 1) {
+            for (let e1 = 0; e1 < s1Endpoints.length; e1 += 1) {
+              if (!samePoint(s0Endpoints[e0].point, s1Endpoints[e1].point)) {
+                continue;
+              }
+
+              const owner = chooseEndpointTrimOwner(s0, s1);
+              const endpoint = owner.index === s0.index
+                ? s0Endpoints[e0].endpoint
+                : s1Endpoints[e1].endpoint;
+              addEndpointTrim(owner.index, endpoint, safeTrim);
+            }
+          }
+
+          for (let e0 = 0; e0 < s0Endpoints.length; e0 += 1) {
+            const tOnS1 = endpointParamOnSegment(s0Endpoints[e0].point, { a: s1.a, b: s1.b });
+            if (tOnS1 !== null && tOnS1 > epsParam && tOnS1 < (1 - epsParam)) {
+              addEndpointTrim(s0.index, s0Endpoints[e0].endpoint, safeTrim);
+            }
+          }
+
+          for (let e1 = 0; e1 < s1Endpoints.length; e1 += 1) {
+            const tOnS0 = endpointParamOnSegment(s1Endpoints[e1].point, { a: s0.a, b: s0.b });
+            if (tOnS0 !== null && tOnS0 > epsParam && tOnS0 < (1 - epsParam)) {
+              addEndpointTrim(s1.index, s1Endpoints[e1].endpoint, safeTrim);
+            }
+          }
+        }
+      }
+
+      return trims;
+    }
+
     function buildWallMeshData(sourceSegments, levelBaseY, meshName) {
       const mesh = { name: meshName || "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
       if (!Array.isArray(sourceSegments) || sourceSegments.length === 0) {
@@ -4975,7 +5109,7 @@
       const doorHeadHeight = getDoorHeadHeight();
       const windowOpeningGap = getWindowOpeningGap();
       const half = thickness / 2;
-      const wallEndpointUsage = buildWallEndpointUsageForMesh(resolvedSegments);
+      const joinTrims = buildPerpendicularJoinTrimsForMesh(resolvedSegments, half);
 
       const vertexMap = new Map();
 
@@ -5078,24 +5212,20 @@
           const len = vec2Length(ab);
           if (len > 1e-8) {
             const dir = vec2Scale(ab, 1 / len);
-            const startKey = buildWallEndpointKey2D(a);
-            const endKey = buildWallEndpointKey2D(b);
-            const hasStartJoin = (wallEndpointUsage.get(startKey) || 0) > 1;
-            const hasEndJoin = (wallEndpointUsage.get(endKey) || 0) > 1;
+            const trimConfig = joinTrims[i] || { start: 0, end: 0 };
+            const trimAtStart = Math.min(Math.max(0, trimConfig.start || 0), Math.max(0, len - 1e-6));
+            const trimAtEnd = Math.min(Math.max(0, trimConfig.end || 0), Math.max(0, len - trimAtStart - 1e-6));
 
-            const trimAtStart = hasStartJoin ? Math.min(half, Math.max(0, len - 1e-6)) : 0;
-            const extendAtEnd = hasEndJoin ? half : 0;
-
-            if (trimAtStart > 0) {
+            if (trimAtStart > 1e-8) {
               const trimVec = vec2Scale(dir, trimAtStart);
               a.x += trimVec.x;
               a.z += trimVec.z;
             }
 
-            if (extendAtEnd > 0) {
-              const extendVec = vec2Scale(dir, extendAtEnd);
-              b.x += extendVec.x;
-              b.z += extendVec.z;
+            if (trimAtEnd > 1e-8) {
+              const trimVec = vec2Scale(dir, trimAtEnd);
+              b.x -= trimVec.x;
+              b.z -= trimVec.z;
             }
           }
         }
