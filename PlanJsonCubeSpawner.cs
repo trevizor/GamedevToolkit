@@ -13,7 +13,6 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
     [Header("Prefabs By Line Type")]
     [SerializeField] private GameObject wallPrefab;
-    [SerializeField] private GameObject halfWallPrefab;
     [SerializeField] private GameObject doorPrefab;
     [SerializeField] private GameObject windowPrefab;
     [SerializeField] private GameObject floorPrefab;
@@ -28,6 +27,9 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private List<GameObject> object3x3Prefabs = new List<GameObject>();
     [SerializeField] private List<GameObject> object5x5Prefabs = new List<GameObject>();
 
+    [Header("Object Prefabs By Type")]
+    [SerializeField] private GameObject placedDoorPrefab;
+
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
     [SerializeField] private bool clearPreviousOnBuild = true;
@@ -38,12 +40,14 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private bool invertPlanX = true;
 
     [Header("Slab Offsets (Unity Importer Only)")]
-    [SerializeField] private float floorSlabYOffset = 0.0f;
+    [SerializeField] private float floorSlabYOffset = 0.01f;
     [SerializeField] private float ceilingSlabYOffset = 0.05f;
 
     [Header("Prefab Length Setup")]
+    [SerializeField] private float prefabBaseThickness = 1.0f;
     [SerializeField] private float prefabBaseLength = 1.0f;
-    [SerializeField] private float joinLengthCorrectionUnits = 0.125f;
+    [SerializeField] private float prefabBaseHeight = 1.0f;
+    [SerializeField] private float joinLengthCorrectionUnits = 0f;
 
     [Header("Debug")]
     [SerializeField] private bool logBuildSummary = true;
@@ -84,6 +88,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [Serializable]
     private class PlaceObjectData
     {
+        public string type;
         public float size;
         public float cx;
         public float cy;
@@ -217,7 +222,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 float levelBaseY = i * floorStride;
                 if (segments != null && segments.Length > 0)
                 {
-                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallThicknessFromPlan);
+                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallThicknessFromPlan, wallHeightFromPlan);
                 }
 
                 SlabBoxData[] slabBoxes = plan.floors[i] != null ? plan.floors[i].slabBoxes : null;
@@ -227,12 +232,12 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 spawnedRampCount += SpawnRamps(ramps, i, grid, floorStride, wallHeightFromPlan, slabThickness);
 
                 PlaceObjectData[] placeObjects = plan.floors[i] != null ? plan.floors[i].placeObjects : null;
-                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, rng);
+                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, wallHeightFromPlan, rng);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
         {
-            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallThicknessFromPlan);
+            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallThicknessFromPlan, wallHeightFromPlan);
         }
         else
         {
@@ -249,6 +254,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         PlaceObjectData[] placeObjects,
         float levelBaseY,
         float gridSize,
+        float wallHeight,
         System.Random rng)
     {
         if (placeObjects == null || placeObjects.Length == 0 || rng == null)
@@ -266,9 +272,20 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            float size = NormalizeObjectSize(obj.size);
-            List<GameObject> prefabList = ResolveObjectPrefabList(size);
-            GameObject prefab = PickRandomPrefab(prefabList, rng);
+            string objectType = NormalizePlacedObjectType(obj.type);
+            GameObject prefab = null;
+
+            if (objectType == "doorPrefab")
+            {
+                prefab = placedDoorPrefab != null ? placedDoorPrefab : doorPrefab;
+            }
+            else
+            {
+                float size = NormalizeObjectSize(obj.size);
+                List<GameObject> prefabList = ResolveObjectPrefabList(size);
+                prefab = PickRandomPrefab(prefabList, rng);
+            }
+
             if (prefab == null)
             {
                 continue;
@@ -281,16 +298,38 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            // Object prefabs are authored per-size list (1x1, 2x2, 3x3, 5x5), so keep their original scale.
             Vector3 localScale = prefab.transform.localScale;
+            if (objectType == "doorPrefab")
+            {
+                // Door objects keep authored X/Z, but normalize vertical scale to match wall height.
+                localScale.y = BuildScaledLength(wallHeight, prefabBaseHeight, localScale.y);
+            }
+
             Vector3 localPos = new Vector3(px, levelBaseY, pz);
-            Quaternion localRot = Quaternion.Euler(0f, obj.rotation, 0f);
+            float yRotation = objectType == "doorPrefab"
+                ? Mathf.Round(obj.rotation / 90f) * 90f
+                : obj.rotation;
+            Quaternion localRot = Quaternion.Euler(0f, yRotation, 0f);
 
             SpawnPrefab(prefab, localPos, localRot, localScale);
             count += 1;
         }
 
         return count;
+    }
+
+    private string NormalizePlacedObjectType(string raw)
+    {
+        return string.Equals(raw, "doorPrefab", StringComparison.OrdinalIgnoreCase)
+            ? "doorPrefab"
+            : "generic";
+    }
+
+    private float BuildScaledLength(float targetLength, float baseLength, float currentScaleAxis)
+    {
+        float safeBaseLength = Mathf.Max(0.0001f, baseLength);
+        float lengthMultiplier = Mathf.Max(0.0001f, targetLength) / safeBaseLength;
+        return currentScaleAxis * lengthMultiplier;
     }
 
     private float NormalizeObjectSize(float raw)
@@ -430,8 +469,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             // Ramp prefabs are expected to have pivot at ground level and centered in XZ.
             float baseY = Mathf.Min(startY, endY);
             Vector3 localPos = new Vector3(px, baseY, pz);
-            // Exported top-half ramps invert rise direction versus full/half ramps.
-            float yaw = isTopHalfRamp ? (ramp.rotation + 180f) : ramp.rotation;
+            // Exported half/top-half ramps invert rise direction versus full ramps.
+            float yaw = (isHalfRamp || isTopHalfRamp) ? (ramp.rotation + 180f) : ramp.rotation;
             Quaternion localRot = Quaternion.Euler(0f, yaw, 0f);
             Vector3 localScale = new Vector3(sx, rise, sz);
 
@@ -446,7 +485,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         SegmentData[] segments,
         float levelBaseY,
         float gridSize,
-        float wallThickness)
+        float wallThickness,
+        float wallHeight)
     {
         int count = 0;
         Dictionary<string, int> wallEndpointUsage = BuildWallEndpointUsage(segments, gridSize);
@@ -489,7 +529,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 extendAtEnd = hasEndJoin ? joinCompensation : 0f;
             }
 
-            SpawnSegmentPrefab(prefab, start, end, levelBaseY, trimAtStart, extendAtEnd);
+            float targetSegmentHeight = type == "halfwall"
+                ? wallHeight * HALF_WALL_HEIGHT_FACTOR
+                : wallHeight;
+
+            SpawnSegmentPrefab(prefab, start, end, levelBaseY, trimAtStart, extendAtEnd, targetSegmentHeight, wallThickness);
             count += 1;
         }
 
@@ -503,7 +547,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             case "wall":
                 return wallPrefab;
             case "halfwall":
-                return halfWallPrefab != null ? halfWallPrefab : wallPrefab;
+                return wallPrefab;
             case "door":
                 return doorPrefab != null ? doorPrefab : wallPrefab;
             case "window":
@@ -606,7 +650,9 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         Vector2 end,
         float levelBaseY,
         float trimAtStart,
-        float extendAtEnd)
+        float extendAtEnd,
+        float targetHeight,
+        float targetThickness)
     {
         Vector2 delta = end - start;
         float len = delta.magnitude;
@@ -632,7 +678,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         Vector3 worldPos = new Vector3(adjustedStart.x, levelBaseY, adjustedStart.y);
         Vector3 dir3 = new Vector3(dir.x, 0f, dir.y);
         Quaternion rot = BuildTopViewRotation(dir3);
-        Vector3 scale = BuildScaledLength(prefab.transform.localScale, adjustedLength);
+        Vector3 scale = BuildScaledLength(prefab.transform.localScale, adjustedLength, targetHeight, targetThickness);
 
         SpawnPrefab(prefab, worldPos, rot, scale);
     }
@@ -729,12 +775,18 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         return Quaternion.Euler(0f, yaw, 0f);
     }
 
-    private Vector3 BuildScaledLength(Vector3 baseScale, float lineLength)
+    private Vector3 BuildScaledLength(Vector3 baseScale, float lineLength, float targetHeight, float targetThickness)
     {
+        float safeBaseThickness = Mathf.Max(0.0001f, prefabBaseThickness);
         float safeBaseLength = Mathf.Max(0.0001f, prefabBaseLength);
+        float safeBaseHeight = Mathf.Max(0.0001f, prefabBaseHeight);
+        float thicknessMultiplier = Mathf.Max(0.0001f, targetThickness) / safeBaseThickness;
         float lengthMultiplier = lineLength / safeBaseLength;
+        float heightMultiplier = Mathf.Max(0.0001f, targetHeight) / safeBaseHeight;
 
-        // Assumes all segment prefabs point forward (+Z) and have the same base length.
+        // Assumes segment roots are normalized and point forward (+Z).
+        baseScale.x *= thicknessMultiplier;
+        baseScale.y *= heightMultiplier;
         baseScale.z *= lengthMultiplier;
 
         return baseScale;
