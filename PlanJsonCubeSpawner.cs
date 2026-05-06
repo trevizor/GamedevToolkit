@@ -32,6 +32,9 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private float defaultGridSizeUnits = 1.0f;
     [SerializeField] private int randomSeed = -1;
 
+    [Header("Coordinate Mapping")]
+    [SerializeField] private bool invertPlanX = true;
+
     [Header("Slab Offsets (Unity Importer Only)")]
     [SerializeField] private float floorSlabYOffset = 0.0f;
     [SerializeField] private float ceilingSlabYOffset = 0.05f;
@@ -258,8 +261,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            float px = obj.cx * gridSize;
-            float pz = obj.cy * gridSize;
+            float px = MapPlanXToUnityX(obj.cx, gridSize);
+            float pz = MapPlanYToUnityZ(obj.cy, gridSize);
             if (!float.IsFinite(px) || !float.IsFinite(pz))
             {
                 continue;
@@ -357,8 +360,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            float px = ramp.cx * gridSize;
-            float pz = ramp.cy * gridSize;
+            float px = MapPlanXToUnityX(ramp.cx, gridSize);
+            float pz = MapPlanYToUnityZ(ramp.cy, gridSize);
             if (!float.IsFinite(px) || !float.IsFinite(pz))
             {
                 continue;
@@ -415,8 +418,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
             string type = string.IsNullOrWhiteSpace(seg.type) ? "wall" : seg.type.Trim().ToLowerInvariant();
 
-            Vector2 start = new Vector2(seg.a.x * gridSize, seg.a.y * gridSize);
-            Vector2 end = new Vector2(seg.b.x * gridSize, seg.b.y * gridSize);
+            Vector2 start = BuildPlanTopViewPoint(seg.a.x, seg.a.y, gridSize);
+            Vector2 end = BuildPlanTopViewPoint(seg.b.x, seg.b.y, gridSize);
 
             if ((end - start).sqrMagnitude < 0.000001f)
             {
@@ -510,8 +513,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            float px = box.cx * gridSize;
-            float pz = box.cy * gridSize;
+            float px = MapPlanXToUnityX(box.cx, gridSize);
+            float pz = MapPlanYToUnityZ(box.cy, gridSize);
             if (!float.IsFinite(px) || !float.IsFinite(pz))
             {
                 continue;
@@ -612,8 +615,8 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            Vector2 start = new Vector2(seg.a.x * gridSize, seg.a.y * gridSize);
-            Vector2 end = new Vector2(seg.b.x * gridSize, seg.b.y * gridSize);
+            Vector2 start = BuildPlanTopViewPoint(seg.a.x, seg.a.y, gridSize);
+            Vector2 end = BuildPlanTopViewPoint(seg.b.x, seg.b.y, gridSize);
             if ((end - start).sqrMagnitude < 0.000001f)
             {
                 continue;
@@ -647,6 +650,24 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         int qx = Mathf.RoundToInt(point.x * 1000f);
         int qy = Mathf.RoundToInt(point.y * 1000f);
         return qx.ToString() + ":" + qy.ToString();
+    }
+
+    private Vector2 BuildPlanTopViewPoint(float planX, float planY, float gridSize)
+    {
+        return new Vector2(
+            MapPlanXToUnityX(planX, gridSize),
+            MapPlanYToUnityZ(planY, gridSize));
+    }
+
+    private float MapPlanXToUnityX(float planX, float gridSize)
+    {
+        float x = planX * gridSize;
+        return invertPlanX ? -x : x;
+    }
+
+    private float MapPlanYToUnityZ(float planY, float gridSize)
+    {
+        return planY * gridSize;
     }
 
     private Quaternion BuildTopViewRotation(Vector3 direction)

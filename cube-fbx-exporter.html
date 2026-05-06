@@ -1814,7 +1814,7 @@
       const sx = Math.max(1, maxX - minX);
       const sy = Math.max(1, maxY - minY);
 
-      return {
+      const slab = {
         type: type === "ceiling" ? "ceiling" : type === "halfwall" ? "halfwall" : "floor",
         cx: (minX + maxX) * 0.5,
         cy: (minY + maxY) * 0.5,
@@ -1822,6 +1822,41 @@
         sy,
         rotation: normalizeRotationDegrees(slabPlacementRotationDeg)
       };
+      snapSlabBoxToGrid(slab);
+      return slab;
+    }
+
+    function snapSlabCenterToGridAxis(value, span) {
+      if (span % 2 === 0) {
+        return Math.round(value);
+      }
+      return Math.floor(value) + 0.5;
+    }
+
+    function snapSlabBoxToGrid(box) {
+      if (!box) {
+        return;
+      }
+
+      const sx = Math.max(1, Math.round(Number(box.sx) || 1));
+      const sy = Math.max(1, Math.round(Number(box.sy) || 1));
+      const rot = normalizeRotationDegrees(Number(box.rotation) || 0);
+      box.sx = sx;
+      box.sy = sy;
+      box.rotation = rot;
+
+      // Perfect border-to-grid alignment is only possible for orthogonal slab rotations.
+      const nearestQuarter = Math.round(rot / 90);
+      const nearestQuarterRot = normalizeRotationDegrees(nearestQuarter * 90);
+      const isOrthogonal = Math.abs(rot - nearestQuarterRot) < 1e-6;
+
+      if (isOrthogonal) {
+        const quarterTurns = nearestQuarter % 4;
+        const xSpan = quarterTurns % 2 === 0 ? sx : sy;
+        const ySpan = quarterTurns % 2 === 0 ? sy : sx;
+        box.cx = snapSlabCenterToGridAxis(Number(box.cx) || 0, xSpan);
+        box.cy = snapSlabCenterToGridAxis(Number(box.cy) || 0, ySpan);
+      }
     }
 
     function createRampFromDrag(fromGrid, toGrid, rampType) {
@@ -6057,6 +6092,7 @@
             }
             box.cx = original.cx + dx;
             box.cy = original.cy + dy;
+            snapSlabBoxToGrid(box);
           }
         } else if (dragState.mode === "move-ramp-selection") {
           const ramps = getCurrentLevelRamps();
@@ -6108,6 +6144,7 @@
                 }
                 box.cx = original.cx + dx;
                 box.cy = original.cy + dy;
+                snapSlabBoxToGrid(box);
               }
             }
           }
@@ -6192,6 +6229,8 @@
           box.sy = Math.max(1, maxY - minY);
           if (dragState.kind === "ramp") {
             snapRampToGrid(box);
+          } else {
+            snapSlabBoxToGrid(box);
           }
         }
 
@@ -6589,6 +6628,7 @@
             continue;
           }
           box.rotation = normalizeRotationDegrees((Number(box.rotation) || 0) + slabRotationDelta);
+          snapSlabBoxToGrid(box);
         }
 
         const rampDirectionDelta = key === "q" ? -90 : 90;
