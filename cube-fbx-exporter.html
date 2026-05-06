@@ -1464,6 +1464,14 @@
       return normalizePlaceObjectType(type) === "doorPrefab" ? 90 : 15;
     }
 
+    function getPlacedObjectDisplayRotation(obj) {
+      const type = normalizePlaceObjectType(obj ? obj.type : "generic");
+      const rawRotation = Number(obj && obj.rotation) || 0;
+      return type === "doorPrefab"
+        ? normalizeRotationDegrees(rawRotation + 90)
+        : normalizeRotationDegrees(rawRotation);
+    }
+
     function getPlacedObjectTypeLabel(type) {
       return normalizePlaceObjectType(type) === "doorPrefab" ? "Door prefab" : "Object";
     }
@@ -1688,7 +1696,7 @@
           cy: obj.cy,
           sx: footprint.sx,
           sy: footprint.sy,
-          rotation: obj.rotation
+          rotation: getPlacedObjectDisplayRotation(obj)
         };
         if (pointInSlabBox(point, proxy)) {
           return i;
@@ -1968,7 +1976,7 @@
               continue;
             }
             const footprint = getPlacedObjectFootprint(obj);
-            includeBoxCorners(Number(obj.cx), Number(obj.cy), footprint.sx, footprint.sy, Number(obj.rotation) || 0);
+            includeBoxCorners(Number(obj.cx), Number(obj.cy), footprint.sx, footprint.sy, getPlacedObjectDisplayRotation(obj));
           }
         }
       }
@@ -2628,15 +2636,12 @@
 
         const type = normalizePlaceObjectType(obj.type);
         const footprint = getPlacedObjectFootprint(obj);
-        const displayRotation = type === "doorPrefab"
-          ? normalizeRotationDegrees((Number(obj.rotation) || 0) + 90)
-          : obj.rotation;
         const proxy = {
           cx: obj.cx,
           cy: obj.cy,
           sx: footprint.sx,
           sy: footprint.sy,
-          rotation: displayRotation
+          rotation: getPlacedObjectDisplayRotation(obj)
         };
         const corners = getSlabBoxCorners(proxy);
         if (corners.length !== 4) {
@@ -3057,7 +3062,7 @@
                 cy: obj.cy,
                 sx: footprint.sx,
                 sy: footprint.sy,
-                rotation: obj.rotation,
+                rotation: getPlacedObjectDisplayRotation(obj),
                 type: "object"
               }
             };
@@ -4066,7 +4071,7 @@
             cy: obj.cy,
             sx: footprint.sx,
             sy: footprint.sy,
-            rotation: obj.rotation
+            rotation: getPlacedObjectDisplayRotation(obj)
           };
           if (boxIntersectsRect(proxy, rect)) {
             objectIndices.push(i);
