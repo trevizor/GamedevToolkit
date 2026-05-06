@@ -7,10 +7,6 @@ public class PlanJsonCubeSpawnerEditor : Editor
 {
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
-
-        GUILayout.Space(8f);
-
         PlanJsonCubeSpawner spawner = (PlanJsonCubeSpawner)target;
 
         GUI.backgroundColor = new Color(0.2f, 0.7f, 0.3f);
@@ -25,5 +21,9 @@ public class PlanJsonCubeSpawnerEditor : Editor
             }
         }
         GUI.backgroundColor = Color.white;
+
+        GUILayout.Space(8f);
+
+        DrawDefaultInspector();
     }
 }

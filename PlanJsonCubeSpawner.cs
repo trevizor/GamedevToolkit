@@ -9,6 +9,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
     [Header("Input")]
     [SerializeField] private TextAsset planJsonFile;
+    [SerializeField] private bool buildFromJsonOnStart = false;
 
     [Header("Prefabs By Line Type")]
     [SerializeField] private GameObject wallPrefab;
@@ -138,6 +139,16 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         }
 
         BuildFromJsonText(planJsonFile.text);
+    }
+
+    private void Start()
+    {
+        if (!buildFromJsonOnStart)
+        {
+            return;
+        }
+
+        BuildFromAssignedJson();
     }
 
     public void BuildFromJsonText(string jsonText)
