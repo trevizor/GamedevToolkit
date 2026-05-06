@@ -597,6 +597,7 @@
         <label class="field" style="margin:0 0 0 8px; min-width:108px;">
           Object Size
           <select id="objectSizeSelect">
+            <option value="0.25">0.25x0.25</option>
             <option value="1">1x1</option>
             <option value="2">2x2</option>
             <option value="3">3x3</option>
@@ -748,7 +749,8 @@
     const DEFAULT_DOOR_WIDTH_UNITS = 1.25;
     const DEFAULT_DOOR_HEAD_HEIGHT_UNITS = 2;
     const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
-    const OBJECT_SIZE_OPTIONS = [1, 2, 3, 5];
+    const OBJECT_SIZE_OPTIONS = [0.25, 1, 2, 3, 5];
+    const OBJECT_SIZE_EPSILON = 0.0001;
     const HALF_WALL_HEIGHT_FACTOR = 0.5;
     const SLAB_Y_OFFSET_FACTOR = 0.1;
 
@@ -1324,11 +1326,19 @@
     }
 
     function normalizeObjectSize(value) {
-      const parsed = Math.round(Number(value));
+      const parsed = Number(value);
       if (!Number.isFinite(parsed)) {
         return 1;
       }
-      return OBJECT_SIZE_OPTIONS.includes(parsed) ? parsed : 1;
+
+      for (let i = 0; i < OBJECT_SIZE_OPTIONS.length; i += 1) {
+        const option = OBJECT_SIZE_OPTIONS[i];
+        if (Math.abs(parsed - option) <= OBJECT_SIZE_EPSILON) {
+          return option;
+        }
+      }
+
+      return 1;
     }
 
     function getObjectGridSpan(size) {

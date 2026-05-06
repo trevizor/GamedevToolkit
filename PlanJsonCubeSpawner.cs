@@ -21,6 +21,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private GameObject rampPrefab;
 
     [Header("Object Prefabs By Size")]
+    [SerializeField] private List<GameObject> object0p25x0p25Prefabs = new List<GameObject>();
     [SerializeField] private List<GameObject> object1x1Prefabs = new List<GameObject>();
     [SerializeField] private List<GameObject> object2x2Prefabs = new List<GameObject>();
     [SerializeField] private List<GameObject> object3x3Prefabs = new List<GameObject>();
@@ -81,7 +82,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [Serializable]
     private class PlaceObjectData
     {
-        public int size;
+        public float size;
         public float cx;
         public float cy;
         public float rotation;
@@ -253,7 +254,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 continue;
             }
 
-            int size = NormalizeObjectSize(obj.size);
+            float size = NormalizeObjectSize(obj.size);
             List<GameObject> prefabList = ResolveObjectPrefabList(size);
             GameObject prefab = PickRandomPrefab(prefabList, rng);
             if (prefab == null)
@@ -280,29 +281,59 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         return count;
     }
 
-    private int NormalizeObjectSize(int raw)
+    private float NormalizeObjectSize(float raw)
     {
-        if (raw == 1 || raw == 2 || raw == 3 || raw == 5)
+        if (Mathf.Abs(raw - 0.25f) <= 0.0001f)
+        {
+            return 0.25f;
+        }
+
+        if (Mathf.Abs(raw - 1f) <= 0.0001f)
+        {
+            return 1f;
+        }
+
+        if (Mathf.Abs(raw - 2f) <= 0.0001f)
+        {
+            return 2f;
+        }
+
+        if (Mathf.Abs(raw - 3f) <= 0.0001f)
+        {
+            return 3f;
+        }
+
+        if (Mathf.Abs(raw - 5f) <= 0.0001f)
         {
             return raw;
         }
 
-        return 1;
+        return 1f;
     }
 
-    private List<GameObject> ResolveObjectPrefabList(int size)
+    private List<GameObject> ResolveObjectPrefabList(float size)
     {
-        switch (size)
+        if (Mathf.Abs(size - 0.25f) <= 0.0001f)
         {
-            case 2:
-                return object2x2Prefabs;
-            case 3:
-                return object3x3Prefabs;
-            case 5:
-                return object5x5Prefabs;
-            default:
-                return object1x1Prefabs;
+            return object0p25x0p25Prefabs;
         }
+
+        if (Mathf.Abs(size - 2f) <= 0.0001f)
+        {
+            return object2x2Prefabs;
+        }
+
+        if (Mathf.Abs(size - 3f) <= 0.0001f)
+        {
+            return object3x3Prefabs;
+        }
+
+        if (Mathf.Abs(size - 5f) <= 0.0001f)
+        {
+            return object5x5Prefabs;
+        }
+
+        return object1x1Prefabs;
     }
 
     private GameObject PickRandomPrefab(List<GameObject> prefabs, System.Random rng)
