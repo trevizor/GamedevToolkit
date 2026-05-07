@@ -6,6 +6,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 {
     private const float HALF_WALL_HEIGHT_FACTOR = 0.5f;
     private const float SLAB_Y_OFFSET_FACTOR = 0.1f;
+    private const float LADDER_HEIGHT_EXTRA_UNITS = 0.5f;
 
     [Header("Input")]
     [SerializeField] private TextAsset planJsonFile;
@@ -29,6 +30,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
     [Header("Object Prefabs By Type")]
     [SerializeField] private GameObject placedDoorPrefab;
+    [SerializeField] private GameObject placedLadderPrefab;
 
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
@@ -290,6 +292,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             {
                 prefab = placedDoorPrefab != null ? placedDoorPrefab : doorPrefab;
             }
+            else if (objectType == "ladderPrefab")
+            {
+                prefab = placedLadderPrefab;
+            }
             else
             {
                 float size = NormalizeObjectSize(obj.size);
@@ -315,9 +321,14 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 // Door objects keep authored X/Z, but normalize vertical scale to match wall height.
                 localScale.y = BuildScaledLength(wallHeight, prefabBaseHeight, localScale.y);
             }
+            else if (objectType == "ladderPrefab")
+            {
+                // Ladders keep authored 0.25x0.50 footprint and scale only in height.
+                localScale.y = BuildScaledLength(wallHeight + LADDER_HEIGHT_EXTRA_UNITS, prefabBaseHeight, localScale.y);
+            }
 
             Vector3 localPos = new Vector3(px, levelBaseY, pz);
-            float yRotation = objectType == "doorPrefab"
+            float yRotation = (objectType == "doorPrefab" || objectType == "ladderPrefab")
                 ? Mathf.Round(obj.rotation / 90f) * 90f
                 : obj.rotation;
             Quaternion localRot = Quaternion.Euler(0f, yRotation, 0f);
@@ -331,6 +342,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
     private string NormalizePlacedObjectType(string raw)
     {
+        if (string.Equals(raw, "ladderPrefab", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ladderPrefab";
+        }
+
         return string.Equals(raw, "doorPrefab", StringComparison.OrdinalIgnoreCase)
             ? "doorPrefab"
             : "generic";

@@ -36,7 +36,7 @@
       height: 100vh;
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       color: var(--ink);
-      background: radial-gradient(circle at top left, #ffffff 0%, var(--bg) 65%);
+      background: #edebff;
       display: flex;
       padding: 10px;
       overflow: hidden;
@@ -45,11 +45,8 @@
     .card {
       width: 95vw;
       height: calc(100vh - 20px);
-      background: var(--card);
-      border: 1px solid var(--border);
       border-radius: 12px;
       padding: 20px;
-      box-shadow: 0 8px 26px rgba(15, 35, 65, 0.08);
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -167,19 +164,105 @@
       color: #22406d;
     }
 
+    button.tool {
+      border: 1px solid var(--tool-tint-border, #c7d5ea);
+      background: var(--tool-tint-bg, #edf3fd);
+      color: var(--tool-tint-ink, #22406d);
+    }
+
+    #toolWallBtn,
+    #toolBoxBtn {
+      --tool-tint-bg: #e2e8f0;
+      --tool-tint-border: #0f1722;
+      --tool-tint-ink: #0f1722;
+    }
+
+    #toolHalfWallBtn {
+      --tool-tint-bg: #d8f0f5;
+      --tool-tint-border: #0e7490;
+      --tool-tint-ink: #155e75;
+    }
+
+    #toolDoorBtn {
+      --tool-tint-bg: #ffedd5;
+      --tool-tint-border: #d97706;
+      --tool-tint-ink: #9a3412;
+    }
+
+    #toolWindowBtn {
+      --tool-tint-bg: #dff4fa;
+      --tool-tint-border: #0891b2;
+      --tool-tint-ink: #0e7490;
+    }
+
+    #toolCutBtn,
+    #toolEraseBtn {
+      --tool-tint-bg: #fee2e2;
+      --tool-tint-border: #dc2626;
+      --tool-tint-ink: #991b1b;
+    }
+
+    #toolFloorBoxBtn {
+      --tool-tint-bg: #d1fae5;
+      --tool-tint-border: #059669;
+      --tool-tint-ink: #065f46;
+    }
+
+    #toolCeilingBoxBtn {
+      --tool-tint-bg: #dbeafe;
+      --tool-tint-border: #2563eb;
+      --tool-tint-ink: #1e3a8a;
+    }
+
+    #toolHalfWallBoxBtn {
+      --tool-tint-bg: #d8f0f5;
+      --tool-tint-border: #0e7490;
+      --tool-tint-ink: #155e75;
+    }
+
+    #toolRampBtn {
+      --tool-tint-bg: #fef3c7;
+      --tool-tint-border: #b45309;
+      --tool-tint-ink: #92400e;
+    }
+
+    #toolHalfRampBtn {
+      --tool-tint-bg: #ffe4e6;
+      --tool-tint-border: #9f1239;
+      --tool-tint-ink: #881337;
+    }
+
+    #toolTopHalfRampBtn {
+      --tool-tint-bg: #f3e8ff;
+      --tool-tint-border: #6d28d9;
+      --tool-tint-ink: #5b21b6;
+    }
+
+    #toolObjectBtn {
+      --tool-tint-bg: #cffafe;
+      --tool-tint-border: #0e7490;
+      --tool-tint-ink: #155e75;
+    }
+
+    #toolSelectBtn {
+      --tool-tint-bg: #dbeafe;
+      --tool-tint-border: #1d4ed8;
+      --tool-tint-ink: #1e40af;
+    }
+
     button.visibility-floor,
     button.visibility-ceiling {
       border: 1px solid transparent;
     }
 
     button.visibility-floor {
-      background: rgba(16, 185, 129, 0.20);
+      background: #d1fae5;
       border-color: #059669;
       color: #065f46;
     }
 
     button.visibility-ceiling {
-      background: rgba(59, 130, 246, 0.20);
+      background: #dbeafe;
       border-color: #2563eb;
       color: #1e3a8a;
     }
@@ -197,7 +280,8 @@
     }
 
     button.tool.active {
-      background: #0f1722;
+      background: var(--tool-tint-border, #0f1722);
+      border-color: var(--tool-tint-border, #0f1722);
       color: #ffffff;
     }
 
@@ -626,6 +710,7 @@
           <select id="objectTypeSelect">
             <option value="generic">Generic</option>
             <option value="doorPrefab">Door Prefab</option>
+            <option value="ladderPrefab">Ladder Prefab</option>
           </select>
         </label>
         <label class="field" style="margin:0 0 0 8px; min-width:108px;">
@@ -643,6 +728,8 @@
         <button id="toolSelectBtn" type="button" class="secondary tool" title="Shortcut: S (cycles S group)">Select/Move</button>
         <button id="selectionScaleDownBtn" type="button" class="secondary" title="Scale selection down by 0.25 step around center pivot (Shortcut: [)">Scale -</button>
         <button id="selectionScaleUpBtn" type="button" class="secondary" title="Scale selection up by 0.25 step around center pivot (Shortcut: ])">Scale +</button>
+        <button id="selectionFlipXBtn" type="button" class="secondary" title="Flip selection on X axis around center pivot">Flip X</button>
+        <button id="selectionFlipYBtn" type="button" class="secondary" title="Flip selection on Y axis around center pivot">Flip Y</button>
       </div>
       <div class="tool-group" aria-label="X group tools">
         <button id="toolEraseBtn" type="button" class="secondary tool" title="Shortcut: X (cycles X group)">Remove Wall</button>
@@ -787,7 +874,9 @@
     const DEFAULT_DOOR_WIDTH_UNITS = 1.25;
     const DEFAULT_DOOR_HEAD_HEIGHT_UNITS = 2;
     const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
-    const PLACE_OBJECT_TYPE_OPTIONS = ["generic", "doorPrefab"];
+    const LADDER_PREFAB_WIDTH_UNITS = 0.25;
+    const LADDER_PREFAB_LENGTH_UNITS = 0.5;
+    const PLACE_OBJECT_TYPE_OPTIONS = ["generic", "doorPrefab", "ladderPrefab"];
     const OBJECT_SIZE_OPTIONS = [0.25, 1, 2, 3, 5];
     const OBJECT_SIZE_EPSILON = 0.0001;
     const OBJECT_POSITION_SNAP_STEP = 0.5;
@@ -823,6 +912,8 @@
     const toolSelectButton = document.getElementById("toolSelectBtn");
     const selectionScaleDownButton = document.getElementById("selectionScaleDownBtn");
     const selectionScaleUpButton = document.getElementById("selectionScaleUpBtn");
+    const selectionFlipXButton = document.getElementById("selectionFlipXBtn");
+    const selectionFlipYButton = document.getElementById("selectionFlipYBtn");
     const toolEraseButton = document.getElementById("toolEraseBtn");
     const zoomOutButton = document.getElementById("zoomOutBtn");
     const zoomInButton = document.getElementById("zoomInBtn");
@@ -1483,13 +1574,41 @@
       return getDoorWidthGrid();
     }
 
-    function getPlacedObjectFootprint(obj) {
-      const type = normalizePlaceObjectType(obj ? obj.type : "generic");
-      if (type === "doorPrefab") {
+    function getLadderPrefabObjectGridWidth() {
+      return LADDER_PREFAB_WIDTH_UNITS / GRID_SIZE_UNITS;
+    }
+
+    function getLadderPrefabObjectGridLength() {
+      return LADDER_PREFAB_LENGTH_UNITS / GRID_SIZE_UNITS;
+    }
+
+    function isFixedFootprintObjectType(type) {
+      const normalized = normalizePlaceObjectType(type);
+      return normalized === "doorPrefab" || normalized === "ladderPrefab";
+    }
+
+    function getFixedPlacedObjectFootprint(type) {
+      const normalized = normalizePlaceObjectType(type);
+      if (normalized === "doorPrefab") {
         return {
           sx: getDoorPrefabObjectGridLength(),
           sy: 1
         };
+      }
+      if (normalized === "ladderPrefab") {
+        return {
+          sx: getLadderPrefabObjectGridWidth(),
+          sy: getLadderPrefabObjectGridLength()
+        };
+      }
+      return null;
+    }
+
+    function getPlacedObjectFootprint(obj) {
+      const type = normalizePlaceObjectType(obj ? obj.type : "generic");
+      const fixedFootprint = getFixedPlacedObjectFootprint(type);
+      if (fixedFootprint) {
+        return fixedFootprint;
       }
 
       const span = getObjectGridSpan(obj && Number.isFinite(Number(obj.size)) ? Number(obj.size) : 1);
@@ -1500,25 +1619,35 @@
     }
 
     function getPlacedObjectRotationStep(type) {
-      return normalizePlaceObjectType(type) === "doorPrefab" ? 90 : 15;
+      return isFixedFootprintObjectType(type) ? 90 : 15;
     }
 
     function getPlacedObjectDisplayRotation(obj) {
       const type = normalizePlaceObjectType(obj ? obj.type : "generic");
       const rawRotation = Number(obj && obj.rotation) || 0;
-      return type === "doorPrefab"
+      return isFixedFootprintObjectType(type)
         ? normalizeRotationDegrees(rawRotation + 90)
         : normalizeRotationDegrees(rawRotation);
     }
 
     function getPlacedObjectTypeLabel(type) {
-      return normalizePlaceObjectType(type) === "doorPrefab" ? "Door prefab" : "Object";
+      const normalized = normalizePlaceObjectType(type);
+      if (normalized === "doorPrefab") {
+        return "Door prefab";
+      }
+      if (normalized === "ladderPrefab") {
+        return "Ladder prefab";
+      }
+      return "Object";
     }
 
     function describeCurrentPlacementObject() {
       const type = normalizePlaceObjectType(currentObjectType);
       if (type === "doorPrefab") {
         return `Door prefab ${getDoorPrefabObjectGridLength().toFixed(2)}x1`;
+      }
+      if (type === "ladderPrefab") {
+        return `Ladder prefab ${LADDER_PREFAB_WIDTH_UNITS.toFixed(2)}x${LADDER_PREFAB_LENGTH_UNITS.toFixed(2)}`;
       }
       return `Object ${currentObjectSize}x${currentObjectSize}`;
     }
@@ -1537,13 +1666,12 @@
       const type = normalizePlaceObjectType(obj.type);
       obj.type = type;
 
-      if (type === "doorPrefab") {
-        const lengthSpan = getDoorPrefabObjectGridLength();
-        const thicknessSpan = 1;
+      const fixedFootprint = getFixedPlacedObjectFootprint(type);
+      if (fixedFootprint) {
         const snappedRotation = normalizeRotationDegrees(Math.round((Number(obj.rotation) || 0) / 90) * 90);
         const quarterTurns = Math.round(snappedRotation / 90) % 4;
-        const xSpan = quarterTurns % 2 === 0 ? lengthSpan : thicknessSpan;
-        const ySpan = quarterTurns % 2 === 0 ? thicknessSpan : lengthSpan;
+        const xSpan = quarterTurns % 2 === 0 ? fixedFootprint.sx : fixedFootprint.sy;
+        const ySpan = quarterTurns % 2 === 0 ? fixedFootprint.sy : fixedFootprint.sx;
         obj.size = 1;
         obj.rotation = snappedRotation;
         obj.cx = snapObjectCenterToGridAxis(Number(obj.cx) || 0, xSpan);
@@ -2172,7 +2300,7 @@
             obj.cx = center.x;
             obj.cy = center.y;
             obj.type = normalizePlaceObjectType(original.type);
-            if (obj.type !== "doorPrefab") {
+            if (!isFixedFootprintObjectType(obj.type)) {
               obj.size = normalizeObjectSize(Number(original.size) * scaleFactor);
             }
             snapPlacedObjectToGrid(obj);
@@ -2345,6 +2473,148 @@
 
       queueLocalAutosave();
       status.textContent = `Rotated selection ${Math.abs(rotationDelta)}deg around center pivot.`;
+      redraw();
+      return true;
+    }
+
+    function flipSelectionByAxis(axisName) {
+      if (!hasAnySelectionAcrossLevels()) {
+        status.textContent = "Select at least one line, slab, ramp, or object before flipping.";
+        return false;
+      }
+
+      const axis = axisName === "y" ? "y" : "x";
+      const originals = buildMixedSelectionOriginals();
+      const pivot = buildSelectionScalePivot(originals);
+      if (!pivot) {
+        status.textContent = "Could not compute selection center for flipping.";
+        return false;
+      }
+
+      function flipPoint(x, y) {
+        if (axis === "x") {
+          return {
+            x: Math.round((2 * pivot.x) - Number(x)),
+            y: Math.round(Number(y))
+          };
+        }
+        return {
+          x: Math.round(Number(x)),
+          y: Math.round((2 * pivot.y) - Number(y))
+        };
+      }
+
+      function flipRotation(rotation) {
+        const rot = normalizeRotationDegrees(Number(rotation) || 0);
+        return axis === "x"
+          ? normalizeRotationDegrees(180 - rot)
+          : normalizeRotationDegrees(-rot);
+      }
+
+      recordUndoSnapshot();
+
+      if (Array.isArray(originals.segmentsByLevel)) {
+        for (let i = 0; i < originals.segmentsByLevel.length; i += 1) {
+          const levelData = originals.segmentsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          if (!level || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const seg = level.segments[original.index];
+            if (!seg) {
+              continue;
+            }
+
+            const a = flipPoint(original.a.x, original.a.y);
+            const b = flipPoint(original.b.x, original.b.y);
+            seg.a.x = a.x;
+            seg.a.y = a.y;
+            seg.b.x = b.x;
+            seg.b.y = b.y;
+          }
+        }
+      }
+
+      if (Array.isArray(originals.slabsByLevel)) {
+        for (let i = 0; i < originals.slabsByLevel.length; i += 1) {
+          const levelData = originals.slabsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          const slabBoxes = level && Array.isArray(level.slabBoxes) ? level.slabBoxes : null;
+          if (!slabBoxes || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const box = slabBoxes[original.index];
+            if (!box) {
+              continue;
+            }
+
+            const center = flipPoint(original.cx, original.cy);
+            box.cx = center.x;
+            box.cy = center.y;
+            box.rotation = flipRotation(original.rotation);
+            snapSlabBoxToGrid(box);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.rampsByLevel)) {
+        for (let i = 0; i < originals.rampsByLevel.length; i += 1) {
+          const levelData = originals.rampsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          const ramps = level && Array.isArray(level.ramps) ? level.ramps : null;
+          if (!ramps || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const ramp = ramps[original.index];
+            if (!ramp) {
+              continue;
+            }
+
+            const center = flipPoint(original.cx, original.cy);
+            ramp.cx = center.x;
+            ramp.cy = center.y;
+            ramp.rotation = flipRotation(original.rotation);
+            snapRampToGrid(ramp);
+          }
+        }
+      }
+
+      if (Array.isArray(originals.objectsByLevel)) {
+        for (let i = 0; i < originals.objectsByLevel.length; i += 1) {
+          const levelData = originals.objectsByLevel[i];
+          const level = floors[levelData.levelIndex];
+          const objects = level && Array.isArray(level.placeObjects) ? level.placeObjects : null;
+          if (!objects || !Array.isArray(levelData.items)) {
+            continue;
+          }
+
+          for (let j = 0; j < levelData.items.length; j += 1) {
+            const original = levelData.items[j];
+            const obj = objects[original.index];
+            if (!obj) {
+              continue;
+            }
+
+            const center = flipPoint(original.cx, original.cy);
+            obj.cx = center.x;
+            obj.cy = center.y;
+            obj.rotation = flipRotation(original.rotation);
+            snapPlacedObjectToGrid(obj);
+          }
+        }
+      }
+
+      queueLocalAutosave();
+      status.textContent = `Flipped selection on ${axis.toUpperCase()} axis around center pivot.`;
       redraw();
       return true;
     }
@@ -2703,9 +2973,11 @@
         const dirLen = Math.hypot(dirX, dirY);
         const safeDirX = dirLen > 1e-6 ? dirX / dirLen : 0;
         const safeDirY = dirLen > 1e-6 ? dirY / dirLen : 1;
+        const arrowDirX = type === "ladderPrefab" ? safeDirY : safeDirX;
+        const arrowDirY = type === "ladderPrefab" ? -safeDirX : safeDirY;
         const halfArrowLen = Math.max(0.25, Math.max(footprint.sx, footprint.sy) * 0.3);
-        const start = gridToCanvas({ x: obj.cx - safeDirX * halfArrowLen, y: obj.cy - safeDirY * halfArrowLen });
-        const end = gridToCanvas({ x: obj.cx + safeDirX * halfArrowLen, y: obj.cy + safeDirY * halfArrowLen });
+        const start = gridToCanvas({ x: obj.cx - arrowDirX * halfArrowLen, y: obj.cy - arrowDirY * halfArrowLen });
+        const end = gridToCanvas({ x: obj.cx + arrowDirX * halfArrowLen, y: obj.cy + arrowDirY * halfArrowLen });
 
         ctx.beginPath();
         const p0 = gridToCanvas(corners[0]);
@@ -2718,6 +2990,9 @@
         if (type === "doorPrefab") {
           ctx.fillStyle = isCurrent ? "rgba(180,83,9,0.25)" : "rgba(217,119,6,0.16)";
           ctx.strokeStyle = isCurrent ? "#78350f" : "#92400e";
+        } else if (type === "ladderPrefab") {
+          ctx.fillStyle = isCurrent ? "rgba(161,98,7,0.26)" : "rgba(217,119,6,0.18)";
+          ctx.strokeStyle = isCurrent ? "#78350f" : "#a16207";
         } else {
           ctx.fillStyle = isCurrent ? "rgba(6,182,212,0.22)" : "rgba(34,211,238,0.14)";
           ctx.strokeStyle = isCurrent ? "#0e7490" : "#0891b2";
@@ -2728,8 +3003,10 @@
 
         ctx.strokeStyle = type === "doorPrefab"
           ? (isCurrent ? "#78350f" : "#92400e")
-          : (isCurrent ? "#0c4a6e" : "#0369a1");
-        ctx.lineWidth = type === "doorPrefab" ? 3 : 2;
+          : type === "ladderPrefab"
+            ? (isCurrent ? "#78350f" : "#92400e")
+            : (isCurrent ? "#0c4a6e" : "#0369a1");
+        ctx.lineWidth = isFixedFootprintObjectType(type) ? 3 : 2;
         ctx.beginPath();
         ctx.moveTo(start.x, start.y);
         ctx.lineTo(end.x, end.y);
@@ -2744,7 +3021,9 @@
         ctx.closePath();
         ctx.fillStyle = type === "doorPrefab"
           ? (isCurrent ? "#78350f" : "#92400e")
-          : (isCurrent ? "#0c4a6e" : "#0369a1");
+          : type === "ladderPrefab"
+            ? (isCurrent ? "#78350f" : "#92400e")
+            : (isCurrent ? "#0c4a6e" : "#0369a1");
         ctx.fill();
       }
 
@@ -3819,7 +4098,7 @@
       }
       if (activeTool === "placeobject") {
         isObjectsVisible = true;
-        if (normalizePlaceObjectType(currentObjectType) === "doorPrefab") {
+        if (isFixedFootprintObjectType(currentObjectType)) {
           slabPlacementRotationDeg = normalizeRotationDegrees(Math.round(slabPlacementRotationDeg / 90) * 90);
         }
       }
@@ -6857,7 +7136,9 @@
         queueLocalAutosave();
         const placedLabel = placed.type === "doorPrefab"
           ? `Door prefab (${getDoorPrefabObjectGridLength().toFixed(2)}x1)`
-          : `Object ${placed.size}x${placed.size}`;
+          : placed.type === "ladderPrefab"
+            ? `Ladder prefab (${LADDER_PREFAB_WIDTH_UNITS.toFixed(2)}x${LADDER_PREFAB_LENGTH_UNITS.toFixed(2)})`
+            : `Object ${placed.size}x${placed.size}`;
         status.textContent = `${placedLabel} placed. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
         redraw();
         return;
@@ -7650,13 +7931,19 @@
     selectionScaleUpButton.addEventListener("click", () => {
       scaleSelectionByStep(1);
     });
+    selectionFlipXButton.addEventListener("click", () => {
+      flipSelectionByAxis("x");
+    });
+    selectionFlipYButton.addEventListener("click", () => {
+      flipSelectionByAxis("y");
+    });
     toolEraseButton.addEventListener("click", () => setTool("erase"));
 
     objectTypeSelect.addEventListener("change", () => {
       currentObjectType = normalizePlaceObjectType(objectTypeSelect.value);
       objectTypeSelect.value = currentObjectType;
-      objectSizeSelect.disabled = currentObjectType === "doorPrefab";
-      if (currentObjectType === "doorPrefab") {
+      objectSizeSelect.disabled = isFixedFootprintObjectType(currentObjectType);
+      if (isFixedFootprintObjectType(currentObjectType)) {
         slabPlacementRotationDeg = normalizeRotationDegrees(Math.round(slabPlacementRotationDeg / 90) * 90);
       }
       if (activeTool === "placeobject") {
@@ -7821,7 +8108,7 @@
     loadUiState();
     currentObjectType = normalizePlaceObjectType(objectTypeSelect.value);
     objectTypeSelect.value = currentObjectType;
-    objectSizeSelect.disabled = currentObjectType === "doorPrefab";
+    objectSizeSelect.disabled = isFixedFootprintObjectType(currentObjectType);
     currentObjectSize = normalizeObjectSize(objectSizeSelect.value);
     objectSizeSelect.value = String(currentObjectSize);
     preloadPreview3dRuntime();
