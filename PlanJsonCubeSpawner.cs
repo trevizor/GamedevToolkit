@@ -36,6 +36,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [SerializeField] private float defaultGridSizeUnits = 1.0f;
     [SerializeField] private int randomSeed = -1;
 
+    [Header("Level Height")]
+    [SerializeField] private bool overrideLevelHeight = false;
+    [SerializeField] private float levelHeightOverride = 2.5f;
+
     [Header("Coordinate Mapping")]
     [SerializeField] private bool invertPlanX = true;
 
@@ -69,6 +73,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     {
         public float thickness;
         public float height;
+        public float levelHeight;
         public string joinMode;
         public float doorHeight;
         public float doorWidth;
@@ -202,6 +207,13 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         float wallHeightFromPlan = (plan.settings != null && plan.settings.height > 0f)
             ? plan.settings.height
             : wallPrefabHeight;
+        float levelHeightFromPlan = (plan.settings != null && plan.settings.levelHeight > 0f)
+            ? plan.settings.levelHeight
+            : wallHeightFromPlan;
+        float floorStride = (overrideLevelHeight && levelHeightOverride > 0f)
+            ? levelHeightOverride
+            : levelHeightFromPlan;
+        float effectiveWallHeight = floorStride;
 
         int spawnedLineCount = 0;
         int spawnedSlabCount = 0;
@@ -215,29 +227,28 @@ public class PlanJsonCubeSpawner : MonoBehaviour
 
         if (plan.floors != null && plan.floors.Length > 0)
         {
-            float floorStride = wallHeightFromPlan;
             for (int i = 0; i < plan.floors.Length; i++)
             {
                 SegmentData[] segments = plan.floors[i] != null ? plan.floors[i].segments : null;
                 float levelBaseY = i * floorStride;
                 if (segments != null && segments.Length > 0)
                 {
-                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallThicknessFromPlan, wallHeightFromPlan);
+                    spawnedLineCount += SpawnSegments(segments, levelBaseY, grid, wallThicknessFromPlan, effectiveWallHeight);
                 }
 
                 SlabBoxData[] slabBoxes = plan.floors[i] != null ? plan.floors[i].slabBoxes : null;
-                spawnedSlabCount += SpawnSlabBoxes(slabBoxes, levelBaseY, grid, wallHeightFromPlan, slabThickness);
+                spawnedSlabCount += SpawnSlabBoxes(slabBoxes, levelBaseY, grid, effectiveWallHeight, slabThickness);
 
                 RampData[] ramps = plan.floors[i] != null ? plan.floors[i].ramps : null;
-                spawnedRampCount += SpawnRamps(ramps, i, grid, floorStride, wallHeightFromPlan, slabThickness);
+                spawnedRampCount += SpawnRamps(ramps, i, grid, floorStride, effectiveWallHeight, slabThickness);
 
                 PlaceObjectData[] placeObjects = plan.floors[i] != null ? plan.floors[i].placeObjects : null;
-                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, wallHeightFromPlan, rng);
+                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, effectiveWallHeight, rng);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
         {
-            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallThicknessFromPlan, wallHeightFromPlan);
+            spawnedLineCount += SpawnSegments(plan.segments, 0f, grid, wallThicknessFromPlan, effectiveWallHeight);
         }
         else
         {
@@ -469,8 +480,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             // Ramp prefabs are expected to have pivot at ground level and centered in XZ.
             float baseY = Mathf.Min(startY, endY);
             Vector3 localPos = new Vector3(px, baseY, pz);
-            // Exported half/top-half ramps invert rise direction versus full ramps.
-            float yaw = (isHalfRamp || isTopHalfRamp) ? (ramp.rotation + 180f) : ramp.rotation;
+            // When plan X is mirrored in Unity, yaw must be mirrored too (not just position).
+            float baseYaw = invertPlanX ? -ramp.rotation : ramp.rotation;
+            // Normalized direction rule: full/half share heading, only top-half is inverted.
+            float yaw = isTopHalfRamp ? (baseYaw + 180f) : baseYaw;
             Quaternion localRot = Quaternion.Euler(0f, yaw, 0f);
             Vector3 localScale = new Vector3(sx, rise, sz);
 

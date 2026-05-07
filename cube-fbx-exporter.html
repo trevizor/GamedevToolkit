@@ -576,6 +576,9 @@
         <label class="field">Height
           <input id="heightInput" type="number" min="0.25" step="0.25" value="2.5" />
         </label>
+        <label class="field">Level Height
+          <input id="levelHeightInput" type="number" min="0.25" step="0.25" value="2.5" />
+        </label>
         <label class="field">Join
           <select id="joinModeSelect">
             <option value="miter">Miter</option>
@@ -654,19 +657,21 @@
       </div>
 
       <aside class="floors-panel" aria-label="Level controls">
+        <div class="floors-header">Visibility</div>
+        <div class="floors-actions">
+          <button id="floorVisibilityToggleBtn" type="button" class="secondary">Show Floor Boxes</button>
+          <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
+          <button id="objectVisibilityToggleBtn" type="button" class="secondary">Show Objects</button>
+          <button id="onionToggleBtn" type="button" class="secondary">Onion View: On</button>
+          <button id="onionBelowToggleBtn" type="button" class="secondary">Lower Level: On</button>
+          <button id="onionAboveToggleBtn" type="button" class="secondary">Upper Level: On</button>
+        </div>
         <div class="floors-header">Levels</div>
         <div class="floors-actions">
           <button id="floorAddAboveBtn" type="button" class="secondary">+ Level</button>
           <button id="floorMoveUpBtn" type="button" class="secondary">Move Up</button>
           <button id="floorMoveDownBtn" type="button" class="secondary">Move Down</button>
           <button id="floorRemoveBtn" type="button" class="secondary">Remove</button>
-          <button id="onionToggleBtn" type="button" class="secondary">Onion View: On</button>
-        </div>
-        <div class="floors-header">Visibility</div>
-        <div class="floors-actions">
-          <button id="floorVisibilityToggleBtn" type="button" class="secondary">Show Floor Boxes</button>
-          <button id="ceilingVisibilityToggleBtn" type="button" class="secondary">Show Ceiling Boxes</button>
-          <button id="objectVisibilityToggleBtn" type="button" class="secondary">Show Objects</button>
         </div>
         <div id="floorsList" class="floors-list"></div>
         <div class="floors-header">Legend</div>
@@ -828,6 +833,8 @@
     const floorMoveDownButton = document.getElementById("floorMoveDownBtn");
     const floorRemoveButton = document.getElementById("floorRemoveBtn");
     const onionToggleButton = document.getElementById("onionToggleBtn");
+    const onionBelowToggleButton = document.getElementById("onionBelowToggleBtn");
+    const onionAboveToggleButton = document.getElementById("onionAboveToggleBtn");
     const floorVisibilityToggleButton = document.getElementById("floorVisibilityToggleBtn");
     const ceilingVisibilityToggleButton = document.getElementById("ceilingVisibilityToggleBtn");
     const objectVisibilityToggleButton = document.getElementById("objectVisibilityToggleBtn");
@@ -836,6 +843,7 @@
     const zoomReadout = document.getElementById("zoomReadout");
     const thicknessInput = document.getElementById("thicknessInput");
     const heightInput = document.getElementById("heightInput");
+    const levelHeightInput = document.getElementById("levelHeightInput");
     const joinModeSelect = document.getElementById("joinModeSelect");
     const doorHeightInput = document.getElementById("doorHeightInput");
     const doorWidthInput = document.getElementById("doorWidthInput");
@@ -897,6 +905,8 @@
     let redoSnapshot = null;
     let isExportPropsOpen = false;
     let isOnionViewEnabled = true;
+    let isOnionBelowVisible = true;
+    let isOnionAboveVisible = true;
     let isFloorBoxesVisible = true;
     let isCeilingBoxesVisible = true;
     let isObjectsVisible = true;
@@ -1052,6 +1062,21 @@
       status.textContent = `${floor.name} moved ${direction < 0 ? "up" : "down"}.`;
     }
 
+    function ensureUpperLevelForCurrent() {
+      if (currentLevelIndex < floors.length - 1) {
+        return false;
+      }
+
+      const insertAt = currentLevelIndex + 1;
+      const newFloor = createLevel("", []);
+      floors.splice(insertAt, 0, newFloor);
+      rebuildLevelNamesIfDefault();
+      clearAllSelections();
+      bindSelectionSetsToCurrentLevel();
+      renderLevelList();
+      return true;
+    }
+
     const toolButtons = {
       wall: toolWallButton,
       box: toolBoxButton,
@@ -1084,6 +1109,8 @@
         localStorage.setItem(LOCAL_UI_STORAGE_KEY, JSON.stringify({
           isExportPropsOpen,
           isOnionViewEnabled,
+          isOnionBelowVisible,
+          isOnionAboveVisible,
           isFloorBoxesVisible,
           isCeilingBoxesVisible,
           isObjectsVisible
@@ -1099,6 +1126,8 @@
         if (!raw) {
           isExportPropsOpen = false;
           isOnionViewEnabled = true;
+          isOnionBelowVisible = true;
+          isOnionAboveVisible = true;
           isFloorBoxesVisible = true;
           isCeilingBoxesVisible = true;
           isObjectsVisible = true;
@@ -1107,6 +1136,8 @@
         const data = JSON.parse(raw);
         isExportPropsOpen = !!(data && data.isExportPropsOpen);
         isOnionViewEnabled = !(data && data.isOnionViewEnabled === false);
+        isOnionBelowVisible = !(data && data.isOnionBelowVisible === false);
+        isOnionAboveVisible = !(data && data.isOnionAboveVisible === false);
         isFloorBoxesVisible = !(data && data.isFloorBoxesVisible === false);
         isCeilingBoxesVisible = !(data && data.isCeilingBoxesVisible === false);
         isObjectsVisible = !(data && data.isObjectsVisible === false);
@@ -1114,6 +1145,8 @@
         console.warn("Failed to load UI state.", error);
         isExportPropsOpen = false;
         isOnionViewEnabled = true;
+        isOnionBelowVisible = true;
+        isOnionAboveVisible = true;
         isFloorBoxesVisible = true;
         isCeilingBoxesVisible = true;
         isObjectsVisible = true;
@@ -1122,6 +1155,8 @@
 
     function updateOnionToggleButton() {
       onionToggleButton.textContent = isOnionViewEnabled ? "Onion View: On" : "Onion View: Off";
+      onionBelowToggleButton.textContent = isOnionBelowVisible ? "Lower Level: On" : "Lower Level: Off";
+      onionAboveToggleButton.textContent = isOnionAboveVisible ? "Upper Level: On" : "Upper Level: Off";
     }
 
     function updateSlabVisibilityButtons() {
@@ -1147,6 +1182,10 @@
 
     function getWallHeight() {
       return clampNumber(heightInput.value, 2.5, 0.25);
+    }
+
+    function getLevelHeight() {
+      return clampNumber(levelHeightInput.value, getWallHeight(), 0.25);
     }
 
     function getDoorHeadHeight() {
@@ -2473,28 +2512,30 @@
       }
     }
 
-    function createRampFromDrag(fromGrid, toGrid, rampType) {
-      const minX = Math.min(fromGrid.x, toGrid.x);
-      const maxX = Math.max(fromGrid.x, toGrid.x);
-      const minY = Math.min(fromGrid.y, toGrid.y);
-      const maxY = Math.max(fromGrid.y, toGrid.y);
-      const sx = Math.max(1, maxX - minX);
-      const sy = Math.max(1, maxY - minY);
+    function createDefaultRampAt(gridPoint, rampType) {
       const fromLevel = currentLevelIndex;
       const normalizedType = rampType === "half" || rampType === "tophalf" ? rampType : "full";
       const requiresUpperLevel = normalizedType === "full" || normalizedType === "tophalf";
-      const toLevel = requiresUpperLevel ? Math.min(floors.length - 1, currentLevelIndex + 1) : currentLevelIndex;
+      const toLevel = requiresUpperLevel ? currentLevelIndex + 1 : currentLevelIndex;
 
-      return {
+      const ramp = {
         type: normalizedType,
-        cx: (minX + maxX) * 0.5,
-        cy: (minY + maxY) * 0.5,
-        sx,
-        sy,
-        rotation: normalizeRotationDegrees(Math.round(slabPlacementRotationDeg / 90) * 90),
+        cx: Number(gridPoint.x) || 0,
+        cy: Number(gridPoint.y) || 0,
+        sx: 5,
+        sy: 5,
+        rotation: 0,
         fromLevel,
         toLevel
       };
+
+      snapRampToGrid(ramp);
+      return ramp;
+    }
+
+    function isRampDirectionInverted(rampType) {
+      const normalizedType = rampType === "half" || rampType === "tophalf" ? rampType : "full";
+      return normalizedType === "tophalf";
     }
 
     function snapRampCenterToGridAxis(value, span) {
@@ -2578,8 +2619,9 @@
           x: (corners[2].x + corners[3].x) * 0.5,
           y: (corners[2].y + corners[3].y) * 0.5
         };
-        const riseFrom = rampType === "tophalf" ? backCenter : frontCenter;
-        const riseTo = rampType === "tophalf" ? frontCenter : backCenter;
+        const invertDirection = isRampDirectionInverted(rampType);
+        const riseFrom = invertDirection ? backCenter : frontCenter;
+        const riseTo = invertDirection ? frontCenter : backCenter;
         const dirX = riseTo.x - riseFrom.x;
         const dirY = riseTo.y - riseFrom.y;
         const dirLen = Math.hypot(dirX, dirY);
@@ -2721,7 +2763,7 @@
       const below = floors[currentLevelIndex - 1];
       const above = floors[currentLevelIndex + 1];
 
-      if (below) {
+      if (below && isOnionBelowVisible) {
         drawSlabBoxes(below.slabBoxes || [], { alpha: 0.7, isCurrent: false });
         drawRamps(below.ramps || [], { alpha: 0.65, isCurrent: false });
         drawPlacedObjects(below.placeObjects || [], { alpha: 0.65, isCurrent: false });
@@ -2733,7 +2775,7 @@
       drawPlacedObjects(getCurrentLevel().placeObjects || [], { alpha: 1, isCurrent: true });
       drawFloorSegments(segments, { alpha: 1, tintColor: null, isCurrent: true });
 
-      if (above) {
+      if (above && isOnionAboveVisible) {
         drawSlabBoxes(above.slabBoxes || [], { alpha: 0.65, isCurrent: false });
         drawRamps(above.ramps || [], { alpha: 0.6, isCurrent: false });
         drawPlacedObjects(above.placeObjects || [], { alpha: 0.6, isCurrent: false });
@@ -2871,7 +2913,7 @@
         }
       }
 
-      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")) {
+      if (drawing && startGrid && pointerGrid && (activeTool === "wall" || activeTool === "door" || activeTool === "window" || activeTool === "halfwall" || activeTool === "box" || activeTool === "ellipse" || activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox")) {
         if (activeTool === "ellipse") {
           const points = buildEllipsePoints(startGrid, pointerGrid, ellipseForceCircle);
           if (points.length >= 3) {
@@ -2922,26 +2964,6 @@
           ctx.lineWidth = 2;
           ctx.strokeStyle = activeTool === "ceilingbox" ? "#2563eb" : activeTool === "halfwallbox" ? "#0e7490" : "#059669";
           ctx.fillStyle = activeTool === "ceilingbox" ? "rgba(59,130,246,0.16)" : activeTool === "halfwallbox" ? "rgba(14,116,144,0.16)" : "rgba(16,185,129,0.16)";
-          ctx.beginPath();
-          const p0 = gridToCanvas(corners[0]);
-          ctx.moveTo(p0.x, p0.y);
-          for (let i = 1; i < corners.length; i += 1) {
-            const p = gridToCanvas(corners[i]);
-            ctx.lineTo(p.x, p.y);
-          }
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        } else if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
-          const previewRamp = createRampFromDrag(
-            startGrid,
-            pointerGrid,
-            activeTool === "halframp" ? "half" : activeTool === "tophalframp" ? "tophalf" : "full"
-          );
-          const corners = getSlabBoxCorners(previewRamp);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = activeTool === "halframp" ? "#9f1239" : activeTool === "tophalframp" ? "#6d28d9" : "#b45309";
-          ctx.fillStyle = activeTool === "halframp" ? "rgba(251,113,133,0.18)" : activeTool === "tophalframp" ? "rgba(168,85,247,0.18)" : "rgba(245,158,11,0.18)";
           ctx.beginPath();
           const p0 = gridToCanvas(corners[0]);
           ctx.moveTo(p0.x, p0.y);
@@ -3368,9 +3390,32 @@
       const dx = targetGrid.x - duplicate.anchor.x;
       const dy = targetGrid.y - duplicate.anchor.y;
 
+      const allGroupLevels = [];
+      const collectLevels = groups => {
+        if (!Array.isArray(groups)) {
+          return;
+        }
+        for (let i = 0; i < groups.length; i += 1) {
+          const level = Number(groups[i] && groups[i].levelIndex);
+          if (Number.isInteger(level)) {
+            allGroupLevels.push(level);
+          }
+        }
+      };
+
+      collectLevels(duplicate.segmentsByLevel);
+      collectLevels(duplicate.slabsByLevel);
+      collectLevels(duplicate.rampsByLevel);
+      collectLevels(duplicate.objectsByLevel);
+
+      const sourceBaseLevel = allGroupLevels.length > 0 ? Math.min(...allGroupLevels) : currentLevelIndex;
+      const levelDelta = currentLevelIndex - sourceBaseLevel;
+      const clampLevelIndex = level => Math.max(0, Math.min(floors.length - 1, Number(level) || 0));
+      const remapLevelIndex = sourceLevel => clampLevelIndex((Number(sourceLevel) || 0) + levelDelta);
+
       return {
         segmentsByLevel: duplicate.segmentsByLevel.map(group => ({
-          levelIndex: group.levelIndex,
+          levelIndex: remapLevelIndex(group.levelIndex),
           items: group.items.map(seg => ({
             a: { x: seg.a.x + dx, y: seg.a.y + dy },
             b: { x: seg.b.x + dx, y: seg.b.y + dy },
@@ -3378,7 +3423,7 @@
           }))
         })),
         slabsByLevel: duplicate.slabsByLevel.map(group => ({
-          levelIndex: group.levelIndex,
+          levelIndex: remapLevelIndex(group.levelIndex),
           items: group.items.map(box => ({
             type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
             cx: box.cx + dx,
@@ -3389,7 +3434,7 @@
           }))
         })),
         rampsByLevel: duplicate.rampsByLevel.map(group => ({
-          levelIndex: group.levelIndex,
+          levelIndex: remapLevelIndex(group.levelIndex),
           items: group.items.map(ramp => ({
             type: ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full",
             cx: ramp.cx + dx,
@@ -3397,12 +3442,12 @@
             sx: ramp.sx,
             sy: ramp.sy,
             rotation: ramp.rotation,
-            fromLevel: ramp.fromLevel,
-            toLevel: ramp.toLevel
+            fromLevel: remapLevelIndex(ramp.fromLevel),
+            toLevel: remapLevelIndex(ramp.toLevel)
           }))
         })),
         objectsByLevel: duplicate.objectsByLevel.map(group => ({
-          levelIndex: group.levelIndex,
+          levelIndex: remapLevelIndex(group.levelIndex),
           items: group.items.map(obj => ({
             type: normalizePlaceObjectType(obj.type),
             size: normalizeObjectSize(obj.size),
@@ -3787,7 +3832,7 @@
         status.textContent = `Tool changed to ${activeTool}. Drag to place box. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
       } else if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
         const rampLabel = activeTool === "halframp" ? "half ramp" : activeTool === "tophalframp" ? "top half ramp" : "ramp";
-        status.textContent = `Tool changed to ${rampLabel}. Drag to place ramp. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
+        status.textContent = `Tool changed to ${rampLabel}. Click to place a 1x1 ramp facing north, then scale/rotate in select mode.`;
       } else if (activeTool === "placeobject") {
         status.textContent = `Tool changed to object. Click to place ${describeCurrentPlacementObject()}. Use Q/E to rotate (${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg).`;
       } else {
@@ -4606,6 +4651,7 @@
         settings: {
           thickness: getWallThickness(),
           height: getWallHeight(),
+          levelHeight: getLevelHeight(),
           joinMode: joinModeSelect.value,
           doorHeight: getDoorHeadHeight(),
           doorWidth: getDoorWidthUnits(),
@@ -4836,6 +4882,9 @@
         }
         if (Number.isFinite(Number(data.settings.height))) {
           heightInput.value = String(data.settings.height);
+        }
+        if (Number.isFinite(Number(data.settings.levelHeight))) {
+          levelHeightInput.value = String(data.settings.levelHeight);
         }
         if (data.settings.joinMode === "miter" || data.settings.joinMode === "bevel") {
           joinModeSelect.value = data.settings.joinMode;
@@ -5747,7 +5796,7 @@
       }
 
       const thickness = getWallThickness();
-      const height = getWallHeight();
+      const height = getLevelHeight();
       const doorHeadHeight = getDoorHeadHeight();
       const windowOpeningGap = getWindowOpeningGap();
       const half = thickness / 2;
@@ -6059,7 +6108,8 @@
 
     function buildCombinedWallsMeshData() {
       // Keep level spacing consistent with runtime spawning and editor expectations.
-      const floorStride = getWallHeight();
+      const floorStride = getLevelHeight();
+      const levelHeight = getLevelHeight();
       const meshData = { name: "FloorPlanWalls", vertices: [], faces: [], faceGroups: [] };
       const slabThickness = Math.max(0.05, getWallThickness());
       const slabYOffset = slabThickness * SLAB_Y_OFFSET_FACTOR;
@@ -6237,10 +6287,10 @@
             const type = box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor";
 
             if (type === "ceiling") {
-              const baseY = levelBaseY + getWallHeight();
+              const baseY = levelBaseY + levelHeight;
               appendSlabBox(cx, cz, sx, sz, baseY, baseY + slabThickness, rotation, "ceiling");
             } else if (type === "halfwall") {
-              const halfTop = levelBaseY + getWallHeight() * HALF_WALL_HEIGHT_FACTOR + slabYOffset;
+              const halfTop = levelBaseY + levelHeight * HALF_WALL_HEIGHT_FACTOR + slabYOffset;
               appendSlabBox(cx, cz, sx, sz, halfTop - slabThickness, halfTop, rotation, "walls");
             } else {
               appendSlabBox(cx, cz, sx, sz, levelBaseY - slabThickness + slabYOffset, levelBaseY + slabYOffset, rotation, "floor");
@@ -6263,12 +6313,12 @@
             const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
             const fromLevel = Number.isInteger(ramp.fromLevel) ? ramp.fromLevel : i;
             const toLevel = Number.isInteger(ramp.toLevel) ? ramp.toLevel : (i + 1);
-            const halfTopY = fromLevel * floorStride + getWallHeight() * HALF_WALL_HEIGHT_FACTOR + slabYOffset;
+            const halfTopY = fromLevel * floorStride + levelHeight * HALF_WALL_HEIGHT_FACTOR + slabYOffset;
             const startY = rampType === "tophalf" ? halfTopY : fromLevel * floorStride;
             const endY = rampType === "half"
               ? halfTopY
               : toLevel * floorStride;
-            const riseTowardPositiveDir = rampType === "tophalf";
+            const riseTowardPositiveDir = isRampDirectionInverted(rampType);
             appendRampWedge(cx, cz, sx, sz, startY, endY, rotation, riseTowardPositiveDir, "floor");
           }
         }
@@ -6770,9 +6820,29 @@
         return;
       }
 
-      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
+      if (activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox") {
         startGrid = clonePoint(pointerGrid);
         drawing = true;
+        redraw();
+        return;
+      }
+
+      if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
+        const needsUpperLevel = activeTool === "ramp" || activeTool === "tophalframp";
+        const createdUpperLevel = needsUpperLevel ? ensureUpperLevelForCurrent() : false;
+        const ramps = getCurrentLevelRamps();
+        const ramp = createDefaultRampAt(pointerGrid, activeTool === "halframp" ? "half" : activeTool === "tophalframp" ? "tophalf" : "full");
+        ramps.push(ramp);
+        clearAllSelections();
+        selectedRampIndices.add(ramps.length - 1);
+        queueLocalAutosave();
+        if ((ramp.type || "full") === "half") {
+          status.textContent = `Half ramp added on level ${ramp.fromLevel + 1}. Default size 1x1 facing north.`;
+        } else if ((ramp.type || "full") === "tophalf") {
+          status.textContent = `${createdUpperLevel ? "Created level above. " : ""}Top half ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Default size 1x1 facing north.`;
+        } else {
+          status.textContent = `${createdUpperLevel ? "Created level above. " : ""}Ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Default size 1x1 facing north.`;
+        }
         redraw();
         return;
       }
@@ -7142,7 +7212,7 @@
       }
 
       const p = getPointerPosition(event);
-      const endGrid = canvasToGrid(p.x, p.y);
+      const endGrid = canvasToToolGrid(p.x, p.y, activeTool);
 
       if (activeTool === "door") {
         const doorEnd = projectDoorEndpoint(startGrid, endGrid);
@@ -7181,22 +7251,6 @@
         queueLocalAutosave();
         const slabLabel = slabType === "ceiling" ? "Ceiling" : slabType === "halfwall" ? "Half wall" : "Floor";
         status.textContent = `${slabLabel} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
-      } else if (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp") {
-        if ((activeTool === "ramp" || activeTool === "tophalframp") && currentLevelIndex >= floors.length - 1) {
-          status.textContent = "Ramp requires an upper level. Add a level above first.";
-        } else {
-          const ramps = getCurrentLevelRamps();
-          const ramp = createRampFromDrag(startGrid, endGrid, activeTool === "halframp" ? "half" : activeTool === "tophalframp" ? "tophalf" : "full");
-          ramps.push(ramp);
-          queueLocalAutosave();
-          if ((ramp.type || "full") === "half") {
-            status.textContent = `Half ramp added on level ${ramp.fromLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
-          } else if ((ramp.type || "full") === "tophalf") {
-            status.textContent = `Top half ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
-          } else {
-            status.textContent = `Ramp added from level ${ramp.fromLevel + 1} to ${ramp.toLevel + 1}. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
-          }
-        }
       } else if (activeTool === "ellipse") {
         const forceCircle = ellipseForceCircle || event.ctrlKey;
         const addedCount = addEllipseAsWalls(startGrid, endGrid, forceCircle);
@@ -7416,39 +7470,31 @@
       } else if ((key === "q" || key === "e") && activeTool === "select" && hasAnySelectionAcrossLevels()) {
         event.preventDefault();
         rotateSelectionByQuarterTurn(key === "q" ? -1 : 1);
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp" || activeTool === "placeobject") && key === "q") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "placeobject") && key === "q") {
         event.preventDefault();
-        const rotationStep = (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")
-          ? 90
-          : (activeTool === "placeobject" ? getPlacedObjectRotationStep(currentObjectType) : 15);
+        const rotationStep = activeTool === "placeobject" ? getPlacedObjectRotationStep(currentObjectType) : 15;
         slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg - rotationStep);
-        const label = (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")
-          ? (activeTool === "halframp" ? "Half ramp" : activeTool === "tophalframp" ? "Top half ramp" : "Ramp")
-          : activeTool === "placeobject"
+        const label = activeTool === "placeobject"
             ? getPlacedObjectTypeLabel(currentObjectType)
             : activeTool === "ceilingbox"
               ? "Ceiling"
               : activeTool === "halfwallbox"
                 ? "Half wall"
                 : "Floor";
-        status.textContent = `${label} ${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp" || activeTool === "placeobject") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        status.textContent = `${label} ${activeTool === "placeobject" ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
-      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp" || activeTool === "placeobject") && key === "e") {
+      } else if ((activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox" || activeTool === "placeobject") && key === "e") {
         event.preventDefault();
-        const rotationStep = (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")
-          ? 90
-          : (activeTool === "placeobject" ? getPlacedObjectRotationStep(currentObjectType) : 15);
+        const rotationStep = activeTool === "placeobject" ? getPlacedObjectRotationStep(currentObjectType) : 15;
         slabPlacementRotationDeg = normalizeRotationDegrees(slabPlacementRotationDeg + rotationStep);
-        const label = (activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp")
-          ? (activeTool === "halframp" ? "Half ramp" : activeTool === "tophalframp" ? "Top half ramp" : "Ramp")
-          : activeTool === "placeobject"
+        const label = activeTool === "placeobject"
             ? getPlacedObjectTypeLabel(currentObjectType)
             : activeTool === "ceilingbox"
               ? "Ceiling"
               : activeTool === "halfwallbox"
                 ? "Half wall"
                 : "Floor";
-        status.textContent = `${label} ${(activeTool === "ramp" || activeTool === "halframp" || activeTool === "tophalframp" || activeTool === "placeobject") ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
+        status.textContent = `${label} ${activeTool === "placeobject" ? "rotation" : "box rotation"}: ${slabPlacementRotationDeg.toFixed(0)}deg`;
         redraw();
       } else if (key === "escape") {
         if (pendingDuplicate) {
@@ -7466,6 +7512,37 @@
           status.textContent = "3D preview closed.";
         }
       }
+    });
+
+    window.addEventListener("mouseup", event => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      if (!drawing || !startGrid) {
+        return;
+      }
+
+      if (!(activeTool === "floorbox" || activeTool === "ceilingbox" || activeTool === "halfwallbox")) {
+        return;
+      }
+
+      if (event.target === canvas) {
+        return;
+      }
+
+      const p = getPointerPosition(event);
+      const endGrid = canvasToToolGrid(p.x, p.y, activeTool);
+      const slabBoxes = getCurrentLevelSlabBoxes();
+      const slabType = activeTool === "ceilingbox" ? "ceiling" : activeTool === "halfwallbox" ? "halfwall" : "floor";
+      const slabBox = createSlabBoxFromDrag(slabType, startGrid, endGrid);
+      slabBoxes.push(slabBox);
+      queueLocalAutosave();
+      drawing = false;
+      startGrid = null;
+      const slabLabel = slabType === "ceiling" ? "Ceiling" : slabType === "halfwall" ? "Half wall" : "Floor";
+      status.textContent = `${slabLabel} box added. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
+      redraw();
     });
 
     undoButton.addEventListener("click", () => {
@@ -7629,6 +7706,22 @@
       redraw();
     });
 
+    onionBelowToggleButton.addEventListener("click", () => {
+      isOnionBelowVisible = !isOnionBelowVisible;
+      updateOnionToggleButton();
+      saveUiState();
+      status.textContent = isOnionBelowVisible ? "Lower level onion visibility enabled." : "Lower level onion visibility disabled.";
+      redraw();
+    });
+
+    onionAboveToggleButton.addEventListener("click", () => {
+      isOnionAboveVisible = !isOnionAboveVisible;
+      updateOnionToggleButton();
+      saveUiState();
+      status.textContent = isOnionAboveVisible ? "Upper level onion visibility enabled." : "Upper level onion visibility disabled.";
+      redraw();
+    });
+
     floorVisibilityToggleButton.addEventListener("click", () => {
       isFloorBoxesVisible = !isFloorBoxesVisible;
       updateSlabVisibilityButtons();
@@ -7663,6 +7756,10 @@
       redraw();
     });
     heightInput.addEventListener("change", () => {
+      queueLocalAutosave();
+      redraw();
+    });
+    levelHeightInput.addEventListener("change", () => {
       queueLocalAutosave();
       redraw();
     });
