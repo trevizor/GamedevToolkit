@@ -3030,6 +3030,90 @@
       ctx.restore();
     }
 
+    function formatTooltipMeasure(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return "0";
+      }
+      return numeric.toFixed(2).replace(/\.0+$/g, "").replace(/(\.\d*[1-9])0+$/g, "$1");
+    }
+
+    function buildPlacedObjectTooltipLines(obj) {
+      const type = normalizePlaceObjectType(obj ? obj.type : "generic");
+      const lines = [`Type: ${getPlacedObjectTypeLabel(type)}`];
+
+      if (type === "generic") {
+        const size = normalizeObjectSize(obj && Number.isFinite(Number(obj.size)) ? Number(obj.size) : 1);
+        const sizeText = formatTooltipMeasure(size);
+        lines.push(`Size: ${sizeText}x${sizeText}`);
+      } else {
+        const footprint = getPlacedObjectFootprint(obj);
+        const widthUnits = Number(footprint.sx) * GRID_SIZE_UNITS;
+        const depthUnits = Number(footprint.sy) * GRID_SIZE_UNITS;
+        lines.push(`Footprint: ${formatTooltipMeasure(widthUnits)}x${formatTooltipMeasure(depthUnits)}`);
+      }
+
+      return lines;
+    }
+
+    function drawSelectedObjectHoverTooltip(pointerWorld) {
+      if (activeTool !== "select" || !pointerWorld || selectedObjectIndices.size === 0 || !isObjectVisible()) {
+        return;
+      }
+
+      const hitIndex = findTopmostPlacedObjectIndex(pointerWorld, () => true);
+      if (hitIndex < 0 || !selectedObjectIndices.has(hitIndex)) {
+        return;
+      }
+
+      const objects = getCurrentLevelPlaceObjects();
+      const obj = objects[hitIndex];
+      if (!obj) {
+        return;
+      }
+
+      const lines = buildPlacedObjectTooltipLines(obj);
+      if (!Array.isArray(lines) || lines.length === 0) {
+        return;
+      }
+
+      const anchor = gridToCanvas(pointerWorld);
+      const paddingX = 10;
+      const paddingY = 8;
+      const lineHeight = 16;
+
+      ctx.save();
+      ctx.font = "12px Segoe UI, Tahoma, sans-serif";
+      ctx.textBaseline = "top";
+
+      let maxWidth = 0;
+      for (let i = 0; i < lines.length; i += 1) {
+        maxWidth = Math.max(maxWidth, ctx.measureText(lines[i]).width);
+      }
+
+      const boxWidth = Math.ceil(maxWidth + paddingX * 2);
+      const boxHeight = Math.ceil(lines.length * lineHeight + paddingY * 2);
+      const margin = 10;
+      let x = anchor.x + 14;
+      let y = anchor.y - boxHeight - 14;
+
+      x = Math.max(margin, Math.min(x, canvas.width - boxWidth - margin));
+      y = Math.max(margin, Math.min(y, canvas.height - boxHeight - margin));
+
+      ctx.fillStyle = "rgba(15,23,34,0.95)";
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 1;
+      ctx.fillRect(x, y, boxWidth, boxHeight);
+      ctx.strokeRect(x + 0.5, y + 0.5, boxWidth - 1, boxHeight - 1);
+
+      ctx.fillStyle = "#f8fafc";
+      for (let i = 0; i < lines.length; i += 1) {
+        ctx.fillText(lines[i], x + paddingX, y + paddingY + i * lineHeight);
+      }
+
+      ctx.restore();
+    }
+
     function drawSegments() {
       if (!isOnionViewEnabled) {
         drawSlabBoxes(getCurrentLevel().slabBoxes || [], { alpha: 1, isCurrent: true });
@@ -3298,6 +3382,10 @@
           ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+
+      if (pointerGrid) {
+        drawSelectedObjectHoverTooltip(pointerGrid);
       }
 
       if (activeTool === "select" && isMarqueeSelecting && marqueeStartWorld && marqueeEndWorld) {
