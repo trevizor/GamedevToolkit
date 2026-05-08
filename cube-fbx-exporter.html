@@ -711,6 +711,7 @@
             <option value="generic">Generic</option>
             <option value="doorPrefab">Door Prefab</option>
             <option value="ladderPrefab">Ladder Prefab</option>
+            <option value="shelvesPrefab">Shelves Prefab</option>
           </select>
         </label>
         <label class="field" style="margin:0 0 0 8px; min-width:108px;">
@@ -876,7 +877,9 @@
     const DEFAULT_WINDOW_OPENING_GAP_UNITS = 0.5;
     const LADDER_PREFAB_WIDTH_UNITS = 0.25;
     const LADDER_PREFAB_LENGTH_UNITS = 0.5;
-    const PLACE_OBJECT_TYPE_OPTIONS = ["generic", "doorPrefab", "ladderPrefab"];
+    const SHELVES_PREFAB_WIDTH_UNITS = 3.5;
+    const SHELVES_PREFAB_LENGTH_UNITS = 0.5;
+    const PLACE_OBJECT_TYPE_OPTIONS = ["generic", "doorPrefab", "ladderPrefab", "shelvesPrefab"];
     const OBJECT_SIZE_OPTIONS = [0.25, 1, 2, 3, 5];
     const OBJECT_SIZE_EPSILON = 0.0001;
     const OBJECT_POSITION_SNAP_STEP = 0.5;
@@ -1395,33 +1398,38 @@
       };
     }
 
+    function getVisibleGridStep() {
+      if (gridPx >= DEFAULT_GRID_PX * 0.75) {
+        return 1;
+      }
+      if (gridPx >= DEFAULT_GRID_PX * 0.38) {
+        return 4;
+      }
+      return 8;
+    }
+
     function drawGrid() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 1;
-      const hideMinorGrid = gridPx < DEFAULT_GRID_PX * 0.35;
+      const visibleStep = getVisibleGridStep();
+      const majorStep = visibleStep * 4;
 
-      const startX = Math.floor((0 - viewOffsetX) / gridPx);
+      const startX = Math.floor(((0 - viewOffsetX) / gridPx) / visibleStep) * visibleStep;
       const endX = Math.ceil((canvas.width - viewOffsetX) / gridPx);
-      for (let gx = startX; gx <= endX; gx += 1) {
-        if (hideMinorGrid && gx % 4 !== 0) {
-          continue;
-        }
+      for (let gx = startX; gx <= endX; gx += visibleStep) {
         const x = gx * gridPx + viewOffsetX;
-        ctx.strokeStyle = gx % 4 === 0 ? "#c7d3e6" : "#e3eaf5";
+        ctx.strokeStyle = gx % majorStep === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
         ctx.moveTo(x + 0.5, 0);
         ctx.lineTo(x + 0.5, canvas.height);
         ctx.stroke();
       }
 
-      const startY = Math.floor((0 - viewOffsetY) / gridPx);
+      const startY = Math.floor(((0 - viewOffsetY) / gridPx) / visibleStep) * visibleStep;
       const endY = Math.ceil((canvas.height - viewOffsetY) / gridPx);
-      for (let gy = startY; gy <= endY; gy += 1) {
-        if (hideMinorGrid && gy % 4 !== 0) {
-          continue;
-        }
+      for (let gy = startY; gy <= endY; gy += visibleStep) {
         const y = gy * gridPx + viewOffsetY;
-        ctx.strokeStyle = gy % 4 === 0 ? "#c7d3e6" : "#e3eaf5";
+        ctx.strokeStyle = gy % majorStep === 0 ? "#c7d3e6" : "#e3eaf5";
         ctx.beginPath();
         ctx.moveTo(0, y + 0.5);
         ctx.lineTo(canvas.width, y + 0.5);
@@ -1582,9 +1590,17 @@
       return LADDER_PREFAB_LENGTH_UNITS / GRID_SIZE_UNITS;
     }
 
+    function getShelvesPrefabObjectGridWidth() {
+      return SHELVES_PREFAB_WIDTH_UNITS / GRID_SIZE_UNITS;
+    }
+
+    function getShelvesPrefabObjectGridLength() {
+      return SHELVES_PREFAB_LENGTH_UNITS / GRID_SIZE_UNITS;
+    }
+
     function isFixedFootprintObjectType(type) {
       const normalized = normalizePlaceObjectType(type);
-      return normalized === "doorPrefab" || normalized === "ladderPrefab";
+      return normalized === "doorPrefab" || normalized === "ladderPrefab" || normalized === "shelvesPrefab";
     }
 
     function getFixedPlacedObjectFootprint(type) {
@@ -1599,6 +1615,12 @@
         return {
           sx: getLadderPrefabObjectGridWidth(),
           sy: getLadderPrefabObjectGridLength()
+        };
+      }
+      if (normalized === "shelvesPrefab") {
+        return {
+          sx: getShelvesPrefabObjectGridWidth(),
+          sy: getShelvesPrefabObjectGridLength()
         };
       }
       return null;
@@ -1638,6 +1660,9 @@
       if (normalized === "ladderPrefab") {
         return "Ladder prefab";
       }
+      if (normalized === "shelvesPrefab") {
+        return "Shelves prefab";
+      }
       return "Object";
     }
 
@@ -1648,6 +1673,9 @@
       }
       if (type === "ladderPrefab") {
         return `Ladder prefab ${LADDER_PREFAB_WIDTH_UNITS.toFixed(2)}x${LADDER_PREFAB_LENGTH_UNITS.toFixed(2)}`;
+      }
+      if (type === "shelvesPrefab") {
+        return `Shelves prefab ${SHELVES_PREFAB_WIDTH_UNITS.toFixed(2)}x${SHELVES_PREFAB_LENGTH_UNITS.toFixed(2)}`;
       }
       return `Object ${currentObjectSize}x${currentObjectSize}`;
     }
@@ -2973,8 +3001,9 @@
         const dirLen = Math.hypot(dirX, dirY);
         const safeDirX = dirLen > 1e-6 ? dirX / dirLen : 0;
         const safeDirY = dirLen > 1e-6 ? dirY / dirLen : 1;
-        const arrowDirX = type === "ladderPrefab" ? safeDirY : safeDirX;
-        const arrowDirY = type === "ladderPrefab" ? -safeDirX : safeDirY;
+        const useLadderLikeArrow = type === "ladderPrefab";
+        const arrowDirX = useLadderLikeArrow ? safeDirY : safeDirX;
+        const arrowDirY = useLadderLikeArrow ? -safeDirX : safeDirY;
         const halfArrowLen = Math.max(0.25, Math.max(footprint.sx, footprint.sy) * 0.3);
         const start = gridToCanvas({ x: obj.cx - arrowDirX * halfArrowLen, y: obj.cy - arrowDirY * halfArrowLen });
         const end = gridToCanvas({ x: obj.cx + arrowDirX * halfArrowLen, y: obj.cy + arrowDirY * halfArrowLen });
@@ -2993,6 +3022,9 @@
         } else if (type === "ladderPrefab") {
           ctx.fillStyle = isCurrent ? "rgba(161,98,7,0.26)" : "rgba(217,119,6,0.18)";
           ctx.strokeStyle = isCurrent ? "#78350f" : "#a16207";
+        } else if (type === "shelvesPrefab") {
+          ctx.fillStyle = isCurrent ? "rgba(22,163,74,0.24)" : "rgba(34,197,94,0.17)";
+          ctx.strokeStyle = isCurrent ? "#14532d" : "#166534";
         } else {
           ctx.fillStyle = isCurrent ? "rgba(6,182,212,0.22)" : "rgba(34,211,238,0.14)";
           ctx.strokeStyle = isCurrent ? "#0e7490" : "#0891b2";
@@ -3005,6 +3037,8 @@
           ? (isCurrent ? "#78350f" : "#92400e")
           : type === "ladderPrefab"
             ? (isCurrent ? "#78350f" : "#92400e")
+            : type === "shelvesPrefab"
+              ? (isCurrent ? "#14532d" : "#166534")
             : (isCurrent ? "#0c4a6e" : "#0369a1");
         ctx.lineWidth = isFixedFootprintObjectType(type) ? 3 : 2;
         ctx.beginPath();
@@ -3023,6 +3057,8 @@
           ? (isCurrent ? "#78350f" : "#92400e")
           : type === "ladderPrefab"
             ? (isCurrent ? "#78350f" : "#92400e")
+            : type === "shelvesPrefab"
+              ? (isCurrent ? "#14532d" : "#166534")
             : (isCurrent ? "#0c4a6e" : "#0369a1");
         ctx.fill();
       }
@@ -7226,6 +7262,8 @@
           ? `Door prefab (${getDoorPrefabObjectGridLength().toFixed(2)}x1)`
           : placed.type === "ladderPrefab"
             ? `Ladder prefab (${LADDER_PREFAB_WIDTH_UNITS.toFixed(2)}x${LADDER_PREFAB_LENGTH_UNITS.toFixed(2)})`
+            : placed.type === "shelvesPrefab"
+              ? `Shelves prefab (${SHELVES_PREFAB_WIDTH_UNITS.toFixed(2)}x${SHELVES_PREFAB_LENGTH_UNITS.toFixed(2)})`
             : `Object ${placed.size}x${placed.size}`;
         status.textContent = `${placedLabel} placed. Rotation: ${normalizeRotationDegrees(slabPlacementRotationDeg).toFixed(0)}deg.`;
         redraw();

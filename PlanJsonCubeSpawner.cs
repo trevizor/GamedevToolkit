@@ -31,6 +31,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
     [Header("Object Prefabs By Type")]
     [SerializeField] private GameObject placedDoorPrefab;
     [SerializeField] private GameObject placedLadderPrefab;
+    [SerializeField] private GameObject placedShelvesPrefab;
 
     [Header("Spawn")]
     [SerializeField] private Transform spawnRoot;
@@ -245,7 +246,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 spawnedRampCount += SpawnRamps(ramps, i, grid, floorStride, effectiveWallHeight, slabThickness);
 
                 PlaceObjectData[] placeObjects = plan.floors[i] != null ? plan.floors[i].placeObjects : null;
-                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, effectiveWallHeight, rng);
+                spawnedObjectCount += SpawnPlacedObjects(placeObjects, levelBaseY, grid, effectiveWallHeight, slabThickness, rng);
             }
         }
         else if (plan.segments != null && plan.segments.Length > 0)
@@ -268,6 +269,7 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         float levelBaseY,
         float gridSize,
         float wallHeight,
+        float slabThickness,
         System.Random rng)
     {
         if (placeObjects == null || placeObjects.Length == 0 || rng == null)
@@ -295,6 +297,10 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             else if (objectType == "ladderPrefab")
             {
                 prefab = placedLadderPrefab;
+            }
+            else if (objectType == "shelvesPrefab")
+            {
+                prefab = placedShelvesPrefab;
             }
             else
             {
@@ -326,9 +332,14 @@ public class PlanJsonCubeSpawner : MonoBehaviour
                 // Ladders keep authored 0.25x0.50 footprint and scale only in height.
                 localScale.y = BuildScaledLength(wallHeight + LADDER_HEIGHT_EXTRA_UNITS, prefabBaseHeight, localScale.y);
             }
+            else if (objectType == "shelvesPrefab")
+            {
+                // Shelves keep authored scale, including height.
+            }
 
-            Vector3 localPos = new Vector3(px, levelBaseY, pz);
-            float yRotation = (objectType == "doorPrefab" || objectType == "ladderPrefab")
+            float objectBaseY = levelBaseY + GetFloorSurfaceYOffset(slabThickness);
+            Vector3 localPos = new Vector3(px, objectBaseY, pz);
+            float yRotation = (objectType == "doorPrefab" || objectType == "ladderPrefab" || objectType == "shelvesPrefab")
                 ? Mathf.Round(obj.rotation / 90f) * 90f
                 : obj.rotation;
             Quaternion localRot = Quaternion.Euler(0f, yRotation, 0f);
@@ -347,6 +358,11 @@ public class PlanJsonCubeSpawner : MonoBehaviour
             return "ladderPrefab";
         }
 
+        if (string.Equals(raw, "shelvesPrefab", StringComparison.OrdinalIgnoreCase))
+        {
+            return "shelvesPrefab";
+        }
+
         return string.Equals(raw, "doorPrefab", StringComparison.OrdinalIgnoreCase)
             ? "doorPrefab"
             : "generic";
@@ -357,6 +373,12 @@ public class PlanJsonCubeSpawner : MonoBehaviour
         float safeBaseLength = Mathf.Max(0.0001f, baseLength);
         float lengthMultiplier = Mathf.Max(0.0001f, targetLength) / safeBaseLength;
         return currentScaleAxis * lengthMultiplier;
+    }
+
+    private float GetFloorSurfaceYOffset(float slabThickness)
+    {
+        float safeThickness = Mathf.Max(0.01f, slabThickness);
+        return safeThickness * SLAB_Y_OFFSET_FACTOR + floorSlabYOffset;
     }
 
     private float NormalizeObjectSize(float raw)
