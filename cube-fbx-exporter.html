@@ -636,6 +636,80 @@
     .help-content a:hover {
       text-decoration: underline;
     }
+
+    .randomizer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 34, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1002;
+      padding: 17px;
+    }
+
+    .randomizer-overlay.hidden {
+      display: none;
+    }
+
+    .randomizer-card {
+      width: min(920px, 96vw);
+      max-height: min(820px, 92vh);
+      overflow: auto;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 15px 34px rgba(15, 35, 65, 0.24);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .randomizer-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .randomizer-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #21406e;
+      letter-spacing: 0.02em;
+    }
+
+    .randomizer-content {
+      color: #284363;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      display: grid;
+      gap: 10px;
+    }
+
+    .randomizer-input-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .randomizer-status {
+      width: 100%;
+      min-height: 170px;
+      resize: vertical;
+      border: 1px solid #c7d5ea;
+      border-radius: 8px;
+      background: #f8fbff;
+      color: #1f2d3d;
+      font-size: 0.76rem;
+      font-family: Consolas, "Courier New", monospace;
+      padding: 8px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -648,6 +722,8 @@
       <button id="preview3dBtn" type="button" class="primary-soft">Preview 3D</button>
       <button id="saveBtn" type="button" class="secondary">Save Plan</button>
       <button id="loadBtn" type="button" class="secondary">Load Plan</button>
+      <button id="loadAdditiveBtn" type="button" class="secondary">Import Plan As Additive</button>
+      <button id="randomizerBtn" type="button" class="secondary">Randomize Building</button>
       <button id="undoBtn" type="button" class="secondary">Undo</button>
       <button id="redoBtn" type="button" class="secondary">Redo</button>
       <button id="clearBtn" type="button" class="secondary">Clear Plan</button>
@@ -799,6 +875,7 @@
       <div id="status" aria-live="polite"></div>
     </div>
     <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
+    <input id="loadAdditiveInput" type="file" accept=".json,application/json" style="display:none" />
   </main>
 
   <div id="preview3dOverlay" class="preview3d-overlay hidden" aria-hidden="true">
@@ -863,6 +940,48 @@
     </div>
   </div>
 
+  <div id="randomizerOverlay" class="randomizer-overlay hidden" aria-hidden="true">
+    <div class="randomizer-card" role="dialog" aria-label="Building randomizer">
+      <div class="randomizer-topbar">
+        <span class="randomizer-title">Building Randomizer</span>
+        <button id="randomizerCloseBtn" type="button" class="secondary">Close</button>
+      </div>
+      <div class="randomizer-content">
+        <p>Load room JSON files, stitch rooms from door pivots, then download the generated JSON plan.</p>
+        <div class="randomizer-input-row">
+          <label class="field">Room Plans
+            <input id="randomizerPlansInput" type="file" accept=".json,application/json" multiple style="width:320px" />
+          </label>
+          <span id="randomizerPlanCount" class="meta">No plans loaded.</span>
+        </div>
+        <div class="randomizer-input-row">
+          <label class="field">Seed
+            <input id="randomizerSeedInput" type="number" step="1" value="1337" />
+          </label>
+          <label class="field">Target Rooms
+            <input id="randomizerTargetRoomsInput" type="number" min="1" step="1" value="8" />
+          </label>
+          <label class="field">Max Attempts
+            <input id="randomizerMaxAttemptsInput" type="number" min="1" step="1" value="60" />
+          </label>
+          <label class="field">Base Paths
+            <input id="randomizerBasePathsInput" type="number" min="2" max="4" step="1" value="4" />
+          </label>
+        </div>
+        <div class="randomizer-input-row">
+          <button id="randomizerGenerateBtn" type="button">Generate</button>
+          <button id="randomizerDownloadBtn" type="button" class="secondary" disabled>Download Generated JSON</button>
+        </div>
+        <textarea id="randomizerStatus" class="randomizer-status" readonly>Randomizer ready.
+      Current rules:
+      - Use level-0 doors as connectors; base room can open up to 4 paths.
+      - Intersection checks use only floor slabs.
+      - Intersection checks are run only on the inserted room second pivot.</textarea>
+      </div>
+    </div>
+  </div>
+
+  <script src="building-randomizer.js"></script>
   <script>
     const GRID_SIZE_UNITS = 0.25;
     const DEFAULT_GRID_PX = 12;
@@ -891,7 +1010,10 @@
     const preview3dButton = document.getElementById("preview3dBtn");
     const saveButton = document.getElementById("saveBtn");
     const loadButton = document.getElementById("loadBtn");
+    const loadAdditiveButton = document.getElementById("loadAdditiveBtn");
+    const randomizerButton = document.getElementById("randomizerBtn");
     const loadInput = document.getElementById("loadInput");
+    const loadAdditiveInput = document.getElementById("loadAdditiveInput");
     const undoButton = document.getElementById("undoBtn");
     const redoButton = document.getElementById("redoBtn");
     const clearButton = document.getElementById("clearBtn");
@@ -954,6 +1076,17 @@
     const preview3dCanvas = document.getElementById("preview3dCanvas");
     const helpOverlay = document.getElementById("helpOverlay");
     const helpCloseButton = document.getElementById("helpCloseBtn");
+    const randomizerOverlay = document.getElementById("randomizerOverlay");
+    const randomizerCloseButton = document.getElementById("randomizerCloseBtn");
+    const randomizerPlansInput = document.getElementById("randomizerPlansInput");
+    const randomizerPlanCount = document.getElementById("randomizerPlanCount");
+    const randomizerSeedInput = document.getElementById("randomizerSeedInput");
+    const randomizerTargetRoomsInput = document.getElementById("randomizerTargetRoomsInput");
+    const randomizerMaxAttemptsInput = document.getElementById("randomizerMaxAttemptsInput");
+    const randomizerBasePathsInput = document.getElementById("randomizerBasePathsInput");
+    const randomizerGenerateButton = document.getElementById("randomizerGenerateBtn");
+    const randomizerDownloadButton = document.getElementById("randomizerDownloadBtn");
+    const randomizerStatus = document.getElementById("randomizerStatus");
 
     function createLevel(name, levelSegments, levelSlabBoxes, levelRamps, levelObjects) {
       return {
@@ -1010,6 +1143,8 @@
     let preview3dAnimationId = null;
     let preview3dResizeHandler = null;
     let preview3dViewState = null;
+    let randomizerTemplates = [];
+    let randomizerGeneratedPlan = null;
     let pendingDuplicate = null;
     let currentObjectType = "generic";
     let currentObjectSize = 1;
@@ -1790,6 +1925,10 @@
     }
 
     function isSlabTypeVisible(type) {
+      const isTemporaryMarqueeSlabVisibilityActive = activeTool === "select" && isMarqueeSelecting;
+      if (isTemporaryMarqueeSlabVisibilityActive) {
+        return true;
+      }
       if (type === "ceiling") {
         return isCeilingBoxesVisible;
       }
@@ -5363,6 +5502,304 @@
       reader.readAsText(file);
     }
 
+    function buildDuplicateSourceFromPlanData(data) {
+      if (!data || typeof data !== "object") {
+        return null;
+      }
+
+      const allowedTypes = new Set(["wall", "halfwall", "door", "window"]);
+      const duplicate = {
+        segmentsByLevel: [],
+        slabsByLevel: [],
+        rampsByLevel: [],
+        objectsByLevel: []
+      };
+      const anchorPoints = [];
+
+      const sanitizeSegments = rawSegments => {
+        const out = [];
+        if (!Array.isArray(rawSegments)) {
+          return out;
+        }
+        for (let i = 0; i < rawSegments.length; i += 1) {
+          const seg = rawSegments[i];
+          if (!seg || !seg.a || !seg.b) {
+            continue;
+          }
+          const ax = Number(seg.a.x);
+          const ay = Number(seg.a.y);
+          const bx = Number(seg.b.x);
+          const by = Number(seg.b.y);
+          if (![ax, ay, bx, by].every(Number.isFinite)) {
+            continue;
+          }
+          if (ax === bx && ay === by) {
+            continue;
+          }
+          out.push({
+            a: { x: ax, y: ay },
+            b: { x: bx, y: by },
+            type: allowedTypes.has(seg.type) ? seg.type : "wall"
+          });
+        }
+        return out;
+      };
+
+      const sanitizeSlabBoxes = rawBoxes => {
+        const out = [];
+        if (!Array.isArray(rawBoxes)) {
+          return out;
+        }
+        for (let i = 0; i < rawBoxes.length; i += 1) {
+          const box = rawBoxes[i];
+          if (!box) {
+            continue;
+          }
+          const cx = Number(box.cx);
+          const cy = Number(box.cy);
+          const sx = Number(box.sx);
+          const sy = Number(box.sy);
+          const rotation = Number(box.rotation);
+          if (![cx, cy, sx, sy].every(Number.isFinite)) {
+            continue;
+          }
+          out.push({
+            type: box.type === "ceiling" ? "ceiling" : box.type === "halfwall" ? "halfwall" : "floor",
+            cx,
+            cy,
+            sx: Math.max(0.001, sx),
+            sy: Math.max(0.001, sy),
+            rotation: Number.isFinite(rotation) ? rotation : 0
+          });
+        }
+        return out;
+      };
+
+      const sanitizeRamps = (rawRamps, defaultLevel) => {
+        const out = [];
+        if (!Array.isArray(rawRamps)) {
+          return out;
+        }
+        for (let i = 0; i < rawRamps.length; i += 1) {
+          const ramp = rawRamps[i];
+          if (!ramp) {
+            continue;
+          }
+          const cx = Number(ramp.cx);
+          const cy = Number(ramp.cy);
+          const sx = Number(ramp.sx);
+          const sy = Number(ramp.sy);
+          const rotation = Number(ramp.rotation);
+          if (![cx, cy, sx, sy].every(Number.isFinite)) {
+            continue;
+          }
+          const rampType = ramp.type === "half" ? "half" : ramp.type === "tophalf" ? "tophalf" : "full";
+          const fromLevel = Number.isInteger(ramp.fromLevel) ? Math.max(0, ramp.fromLevel) : defaultLevel;
+          const toLevel = Number.isInteger(ramp.toLevel)
+            ? Math.max(0, ramp.toLevel)
+            : (rampType === "half" ? defaultLevel : (defaultLevel + 1));
+          out.push({
+            type: rampType,
+            cx,
+            cy,
+            sx: Math.max(0.001, sx),
+            sy: Math.max(0.001, sy),
+            rotation: Number.isFinite(rotation) ? rotation : 0,
+            fromLevel,
+            toLevel
+          });
+        }
+        return out;
+      };
+
+      const sanitizeObjects = rawObjects => {
+        const out = [];
+        if (!Array.isArray(rawObjects)) {
+          return out;
+        }
+        for (let i = 0; i < rawObjects.length; i += 1) {
+          const obj = rawObjects[i];
+          if (!obj) {
+            continue;
+          }
+          const cx = Number(obj.cx);
+          const cy = Number(obj.cy);
+          const rotation = Number(obj.rotation);
+          if (![cx, cy].every(Number.isFinite)) {
+            continue;
+          }
+          const normalized = {
+            type: normalizePlaceObjectType(obj.type),
+            size: normalizeObjectSize(obj.size),
+            cx,
+            cy,
+            rotation: Number.isFinite(rotation) ? rotation : 0
+          };
+          snapPlacedObjectToGrid(normalized);
+          out.push(normalized);
+        }
+        return out;
+      };
+
+      let sourceFloors = [];
+      if (Array.isArray(data.floors) && data.floors.length > 0) {
+        sourceFloors = data.floors;
+      } else if (Array.isArray(data.segments)) {
+        sourceFloors = [{ segments: data.segments, slabBoxes: [], ramps: [], placeObjects: [] }];
+      } else {
+        return null;
+      }
+
+      for (let levelIndex = 0; levelIndex < sourceFloors.length; levelIndex += 1) {
+        const floor = sourceFloors[levelIndex] || {};
+
+        const segments = sanitizeSegments(floor.segments);
+        if (segments.length > 0) {
+          duplicate.segmentsByLevel.push({ levelIndex, items: segments });
+          for (let i = 0; i < segments.length; i += 1) {
+            anchorPoints.push({ x: segments[i].a.x, y: segments[i].a.y });
+            anchorPoints.push({ x: segments[i].b.x, y: segments[i].b.y });
+          }
+        }
+
+        const slabBoxes = sanitizeSlabBoxes(floor.slabBoxes);
+        if (slabBoxes.length > 0) {
+          duplicate.slabsByLevel.push({ levelIndex, items: slabBoxes });
+          for (let i = 0; i < slabBoxes.length; i += 1) {
+            anchorPoints.push({ x: slabBoxes[i].cx, y: slabBoxes[i].cy });
+          }
+        }
+
+        const ramps = sanitizeRamps(floor.ramps, levelIndex);
+        if (ramps.length > 0) {
+          duplicate.rampsByLevel.push({ levelIndex, items: ramps });
+          for (let i = 0; i < ramps.length; i += 1) {
+            anchorPoints.push({ x: ramps[i].cx, y: ramps[i].cy });
+          }
+        }
+
+        const objects = sanitizeObjects(floor.placeObjects);
+        if (objects.length > 0) {
+          duplicate.objectsByLevel.push({ levelIndex, items: objects });
+          for (let i = 0; i < objects.length; i += 1) {
+            anchorPoints.push({ x: objects[i].cx, y: objects[i].cy });
+          }
+        }
+      }
+
+      if (anchorPoints.length === 0) {
+        return null;
+      }
+
+      let sumX = 0;
+      let sumY = 0;
+      for (let i = 0; i < anchorPoints.length; i += 1) {
+        sumX += anchorPoints[i].x;
+        sumY += anchorPoints[i].y;
+      }
+
+      duplicate.anchor = {
+        x: Math.round(sumX / anchorPoints.length),
+        y: Math.round(sumY / anchorPoints.length)
+      };
+
+      return duplicate;
+    }
+
+    function getDuplicateLevelBounds(duplicate) {
+      if (!duplicate) {
+        return null;
+      }
+
+      const levels = [];
+      const collectFromGroups = groups => {
+        if (!Array.isArray(groups)) {
+          return;
+        }
+        for (let i = 0; i < groups.length; i += 1) {
+          const group = groups[i];
+          const levelIndex = Number(group && group.levelIndex);
+          if (Number.isInteger(levelIndex)) {
+            levels.push(levelIndex);
+          }
+          if (group && Array.isArray(group.items)) {
+            for (let j = 0; j < group.items.length; j += 1) {
+              const item = group.items[j];
+              if (item && Number.isInteger(item.fromLevel)) {
+                levels.push(item.fromLevel);
+              }
+              if (item && Number.isInteger(item.toLevel)) {
+                levels.push(item.toLevel);
+              }
+            }
+          }
+        }
+      };
+
+      collectFromGroups(duplicate.segmentsByLevel);
+      collectFromGroups(duplicate.slabsByLevel);
+      collectFromGroups(duplicate.rampsByLevel);
+      collectFromGroups(duplicate.objectsByLevel);
+
+      if (levels.length === 0) {
+        return null;
+      }
+
+      return {
+        min: Math.min(...levels),
+        max: Math.max(...levels)
+      };
+    }
+
+    function ensureLevelCapacityForIndex(targetMaxIndex) {
+      const safeTarget = Math.max(0, Math.floor(Number(targetMaxIndex) || 0));
+      let created = 0;
+      while (floors.length <= safeTarget) {
+        floors.push(createLevel("", []));
+        created += 1;
+      }
+      if (created > 0) {
+        rebuildLevelNamesIfDefault();
+        renderLevelList();
+      }
+      return created;
+    }
+
+    function loadProjectAsAdditiveFromFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const raw = String(reader.result || "");
+          const data = JSON.parse(raw);
+          const duplicate = buildDuplicateSourceFromPlanData(data);
+          if (!duplicate) {
+            status.textContent = "Failed to import additive plan: no valid geometry found.";
+            return;
+          }
+
+          const bounds = getDuplicateLevelBounds(duplicate);
+          if (bounds) {
+            const levelDelta = currentLevelIndex - bounds.min;
+            const targetMaxLevel = bounds.max + levelDelta;
+            ensureLevelCapacityForIndex(targetMaxLevel);
+          }
+
+          pendingDuplicate = duplicate;
+          setTool("select");
+          const importedLevelCount = Array.isArray(data.floors) && data.floors.length > 0 ? data.floors.length : 1;
+          status.textContent = `Additive import ready (${importedLevelCount} level(s)). Move cursor and click to paste.`;
+          redraw();
+        } catch (error) {
+          console.error(error);
+          status.textContent = "Failed to import additive plan file.";
+        }
+      };
+      reader.onerror = () => {
+        status.textContent = "Failed to read additive plan file.";
+      };
+      reader.readAsText(file);
+    }
+
     function vec2(x, z) {
       return { x, z };
     }
@@ -6849,6 +7286,33 @@
       helpOverlay.setAttribute("aria-hidden", "true");
     }
 
+    function openRandomizer() {
+      randomizerOverlay.classList.remove("hidden");
+      randomizerOverlay.setAttribute("aria-hidden", "false");
+    }
+
+    function closeRandomizer() {
+      randomizerOverlay.classList.add("hidden");
+      randomizerOverlay.setAttribute("aria-hidden", "true");
+    }
+
+    function setRandomizerStatus(message) {
+      randomizerStatus.value = String(message || "");
+      randomizerStatus.scrollTop = 0;
+    }
+
+    function updateRandomizerPlanCount() {
+      const count = Array.isArray(randomizerTemplates) ? randomizerTemplates.length : 0;
+      randomizerPlanCount.textContent = count === 1
+        ? "1 valid room loaded."
+        : `${count} valid rooms loaded.`;
+    }
+
+    function setRandomizerGeneratedPlan(plan) {
+      randomizerGeneratedPlan = plan || null;
+      randomizerDownloadButton.disabled = !randomizerGeneratedPlan;
+    }
+
     async function openPreview3d() {
       const hasAnyGeometry = floors.some(floor =>
         (Array.isArray(floor.segments) && floor.segments.length > 0)
@@ -7909,6 +8373,10 @@
           pendingDuplicate = null;
           status.textContent = "Duplicate preview canceled.";
           redraw();
+        } else if (!randomizerOverlay.classList.contains("hidden")) {
+          event.preventDefault();
+          closeRandomizer();
+          status.textContent = "Building randomizer closed.";
         } else if (!helpOverlay.classList.contains("hidden")) {
           event.preventDefault();
           closeHelp();
@@ -8029,11 +8497,28 @@
       loadInput.click();
     });
 
+    loadAdditiveButton.addEventListener("click", () => {
+      loadAdditiveInput.value = "";
+      loadAdditiveInput.click();
+    });
+
+    randomizerButton.addEventListener("click", () => {
+      openRandomizer();
+      status.textContent = "Building randomizer opened.";
+    });
+
     loadInput.addEventListener("change", () => {
       if (!loadInput.files || loadInput.files.length === 0) {
         return;
       }
       loadProjectFromFile(loadInput.files[0]);
+    });
+
+    loadAdditiveInput.addEventListener("change", () => {
+      if (!loadAdditiveInput.files || loadAdditiveInput.files.length === 0) {
+        return;
+      }
+      loadProjectAsAdditiveFromFile(loadAdditiveInput.files[0]);
     });
 
     toolWallButton.addEventListener("click", () => setTool("wall"));
@@ -8225,6 +8710,120 @@
       }
     });
 
+    randomizerCloseButton.addEventListener("click", () => {
+      closeRandomizer();
+      status.textContent = "Building randomizer closed.";
+    });
+
+    randomizerOverlay.addEventListener("click", event => {
+      if (event.target === randomizerOverlay) {
+        closeRandomizer();
+        status.textContent = "Building randomizer closed.";
+      }
+    });
+
+    randomizerPlansInput.addEventListener("change", async () => {
+      const files = randomizerPlansInput.files;
+      if (!window.BuildingPlanRandomizer || typeof window.BuildingPlanRandomizer.loadRoomTemplatesFromFiles !== "function") {
+        setRandomizerStatus("Randomizer module not available.");
+        status.textContent = "Randomizer module not available.";
+        return;
+      }
+
+      setRandomizerGeneratedPlan(null);
+      if (!files || files.length === 0) {
+        randomizerTemplates = [];
+        updateRandomizerPlanCount();
+        setRandomizerStatus("No files selected.");
+        return;
+      }
+
+      setRandomizerStatus("Loading room templates...");
+      try {
+        const result = await window.BuildingPlanRandomizer.loadRoomTemplatesFromFiles(files);
+        randomizerTemplates = Array.isArray(result.templates) ? result.templates : [];
+        updateRandomizerPlanCount();
+
+        const infoLines = [
+          `Files selected: ${files.length}`,
+          `Valid room templates: ${randomizerTemplates.length}`
+        ];
+
+        if (Array.isArray(result.errors) && result.errors.length > 0) {
+          infoLines.push("", "Validation issues:");
+          for (let i = 0; i < result.errors.length; i += 1) {
+            infoLines.push(`- ${result.errors[i]}`);
+          }
+        }
+
+        setRandomizerStatus(infoLines.join("\n"));
+        status.textContent = `${randomizerTemplates.length} room templates loaded for randomizer.`;
+      } catch (error) {
+        randomizerTemplates = [];
+        updateRandomizerPlanCount();
+        setRandomizerStatus(`Failed to load templates. ${error && error.message ? error.message : String(error)}`);
+        status.textContent = "Failed to load room templates.";
+      }
+    });
+
+    randomizerGenerateButton.addEventListener("click", () => {
+      if (!window.BuildingPlanRandomizer || typeof window.BuildingPlanRandomizer.generateMockBuilding !== "function") {
+        setRandomizerStatus("Randomizer module not available.");
+        status.textContent = "Randomizer module not available.";
+        return;
+      }
+
+      const seedRaw = Number(randomizerSeedInput.value);
+      const targetRoomsRaw = Number(randomizerTargetRoomsInput.value);
+      const maxAttemptsRaw = Number(randomizerMaxAttemptsInput.value);
+      const basePathsRaw = Number(randomizerBasePathsInput.value);
+
+      try {
+        const generated = window.BuildingPlanRandomizer.generateMockBuilding({
+          templates: randomizerTemplates,
+          seed: Number.isFinite(seedRaw) ? seedRaw : 1337,
+          targetRooms: Number.isFinite(targetRoomsRaw) ? targetRoomsRaw : 8,
+          maxAttempts: Number.isFinite(maxAttemptsRaw) ? maxAttemptsRaw : 60,
+          basePathCount: Number.isFinite(basePathsRaw) ? basePathsRaw : 4
+        });
+
+        setRandomizerGeneratedPlan(generated.plan);
+        const summary = generated.summary || {};
+        setRandomizerStatus([
+          "Generation completed.",
+          `Base room: ${summary.baseRoomName || "n/a"}`,
+          `Templates available: ${summary.templateCount || 0}`,
+          `Requested target rooms: ${summary.targetRooms || 0}`,
+          `Base paths requested: ${summary.basePathCount || 0}`,
+          `Rooms placed: ${summary.roomsPlaced || 0}`,
+          `Attempts used: ${summary.attemptsUsed || 0}`,
+          "",
+          "Intersection rule applied:",
+          "- Check only inserted room second pivot against floor slabs."
+        ].join("\n"));
+        status.textContent = "Building randomizer generation completed.";
+      } catch (error) {
+        setRandomizerGeneratedPlan(null);
+        setRandomizerStatus(`Generation failed. ${error && error.message ? error.message : String(error)}`);
+        status.textContent = "Building randomizer generation failed.";
+      }
+    });
+
+    randomizerDownloadButton.addEventListener("click", () => {
+      if (!randomizerGeneratedPlan) {
+        setRandomizerStatus("No generated plan available. Click Generate first.");
+        return;
+      }
+
+      const text = JSON.stringify(randomizerGeneratedPlan, null, 2);
+      const blob = new Blob([text], { type: "application/json" });
+      const { datePart, timePart } = formatDateParts(new Date());
+      const safeTitle = sanitizeFilenamePart(planTitle || "Building");
+      const filename = `${safeTitle}-randomized-${datePart}-${timePart}.json`;
+      downloadBlob(blob, filename);
+      status.textContent = `Generated randomizer JSON saved as ${filename}.`;
+    });
+
     exportPropsToggleButton.addEventListener("click", () => {
       isExportPropsOpen = !isExportPropsOpen;
       applyExportPropsVisibility();
@@ -8243,6 +8842,8 @@
     updateSlabVisibilityButtons();
     applyExportPropsVisibility();
     renderLevelList();
+    updateRandomizerPlanCount();
+    setRandomizerGeneratedPlan(null);
 
     const hasAutosavedPlan = loadProjectFromLocalStorage();
     if (hasAutosavedPlan) {
